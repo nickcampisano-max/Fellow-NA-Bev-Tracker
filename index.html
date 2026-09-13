@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NA Bev Variance Tracker</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --teal: #2dd4bf;
+    --teal-ink: #06201d;
+    --teal-glow: rgba(45,212,191,.35);
+    --bg: #0a0e13;
+    --bg2: #0d131a;
+    --card: #131a22;
+    --card2: #182029;
+    --border: #232d38;
+    --ink: #e9edf2;
+    --muted: #8996a5;
+    --green: #4ade80;
+    --green-bg: #123321;
+    --yellow: #fbbf24;
+    --yellow-bg: #3a2a08;
+    --red: #f87171;
+    --red-bg: #3a1414;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 700px at 15% -10%, #10202080 0%, transparent 60%),
+      radial-gradient(1000px 600px at 100% 0%, #0f2a2a70 0%, transparent 55%),
+      linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+    background-attachment: fixed;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 20px 20px 60px; }
+  h1 {
+    font-size: 21px; margin: 0 0 2px; letter-spacing: -.01em;
+    background: linear-gradient(90deg, #fff, var(--teal));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+  .tabbar { display: flex; gap: 6px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .tab {
+    padding: 9px 14px; cursor: pointer; border: none; background: transparent;
+    font-size: 13.5px; font-weight: 600; color: var(--muted); border-bottom: 3px solid transparent;
+    margin-bottom: -1px; transition: color .15s;
+  }
+  .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+  .tab:hover { color: var(--ink); }
+
+  .card {
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; color: var(--ink); }
+  .card h3 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  .rowflex { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .btn {
+    background: var(--teal); color: var(--teal-ink); border: none; border-radius: 7px; padding: 8px 14px;
+    font-size: 13px; font-weight: 700; cursor: pointer; transition: box-shadow .15s, transform .1s;
+    box-shadow: 0 0 0 0 var(--teal-glow);
+  }
+  .btn:hover { box-shadow: 0 0 16px 1px var(--teal-glow); transform: translateY(-1px); }
+  .btn.secondary { background: transparent; color: var(--teal); border: 1px solid var(--teal); }
+  .btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn.small { padding: 5px 10px; font-size: 12px; }
+  .btn.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+
+  .weektabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .weektab {
+    padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--card2);
+    cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted);
+  }
+  .weektab.active { background: var(--teal); color: var(--teal-ink); border-color: var(--teal); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.8px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  td:first-child, th:first-child { text-align: left; }
+  td.left, th.left { text-align: left; }
+  tr.total-row td { font-weight: 700; border-top: 2px solid var(--teal); border-bottom: none; color: var(--ink); }
+
+  input[type=text], input[type=number] {
+    width: 68px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px;
+    font-size: 12.8px; text-align: right; background: var(--bg); color: var(--ink);
+  }
+  input.wide { width: 130px; text-align: left; }
+  input:focus { outline: 2px solid var(--teal-glow); border-color: var(--teal); }
+
+  .flag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11.5px; font-weight: 700; }
+  .flag.green { background: var(--green-bg); color: var(--green); }
+  .flag.yellow { background: var(--yellow-bg); color: var(--yellow); }
+  .flag.red { background: var(--red-bg); color: var(--red); }
+  .sustained { font-size: 10.5px; color: var(--red); font-weight: 700; display: block; margin-top: 2px; }
+  /* Deliberately a different color from the red/yellow/green flag — this is a separate signal
+     (cumulative unaccounted $ pile) from the weekly flag (this week's purchased-vs-sold ratio),
+     and shouldn't be visually confused with it even when they happen to coincide. */
+  .flag.alert-large { background: #4a2408; color: #fb923c; margin-left: 4px; }
+  /* Groups the week table's columns into two visually distinct bands — "This Week" (the flow
+     check: did what got bought this week get sold) vs "Running Total" (the accumulated pile,
+     including stock carried over from before) — so it's obvious at a glance that a column's
+     number and a column's badge might be answering two different questions, not contradicting
+     each other. */
+  th.group-header { text-align: center; font-size: 10px; padding: 5px 8px 4px; }
+  th.group-header.this-week { background: rgba(45,212,191,.08); color: var(--teal); }
+  th.group-header.running-total { background: rgba(251,146,60,.1); color: #fb923c; }
+  th.group-header .sub { font-weight: 400; text-transform: none; letter-spacing: 0; opacity: .8; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+  .kpi .value { font-size: 21px; font-weight: 700; color: var(--ink); }
+  .kpi .value.red { color: var(--red); }
+  .kpi .value.green { color: var(--green); }
+
+  textarea.note {
+    width: 110px; height: 30px; font-size: 11.5px; border: 1px solid var(--border); border-radius: 5px;
+    padding: 4px 5px; resize: vertical; font-family: inherit; text-align: left; background: var(--bg); color: var(--ink);
+  }
+
+  .settings-item { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .settings-item label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 2px; }
+  .settings-field { display: flex; flex-direction: column; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-state .btn { margin-top: 10px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--teal); color: var(--teal-ink); padding: 9px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    opacity: 0; pointer-events: none; transition: opacity .2s; box-shadow: 0 4px 20px var(--teal-glow);
+  }
+  .toast.show { opacity: 1; }
+
+  .compare-bar-wrap { height: 220px; margin-top: 8px; }
+  .info-note { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; overflow-wrap: break-word; white-space: normal; }
+  .info-toggle { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; padding: 0 0 0 4px; line-height: 1; vertical-align: middle; }
+  .info-toggle:hover { color: var(--teal); }
+
+  select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 13px; background: var(--bg); color: var(--ink); }
+
+  .csv-dropzone {
+    display: flex; align-items: center; gap: 8px;
+    border: 1.5px dashed var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 13px; font-weight: 600; color: var(--muted);
+    cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+    width: fit-content;
+  }
+  .csv-dropzone:hover { border-color: var(--teal); color: var(--ink); }
+  .csv-dropzone .csv-icon { font-size: 16px; }
+  .csv-dropzone .csv-sub { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+  .card.csv-dragover { border-color: var(--teal); box-shadow: 0 0 0 2px var(--teal-glow); }
+  .card.csv-dragover .csv-dropzone { border-color: var(--teal); background: var(--teal-glow); color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+<script>
+// Deliberately a different key from the Clever Koi tracker's 'nabev_tracker_v1'. If this ever
+// gets hosted under the same GitHub Pages username as Clever Koi's (e.g. two repos under
+// nickcampisano-max.github.io), that's still the same origin as far as localStorage is concerned
+// — different paths do NOT get separate storage, only different origins do. A shared key would
+// silently let one tracker's save overwrite the other's data. Keep this unique per store/brand.
+const LS_KEY = 'fellow_bev_tracker_v1';
+// Which item/week Unaccounted breakdowns are currently expanded — deliberately NOT part of
+// `state`/localStorage. This is pure UI state (so Gary can check the math without redoing it by
+// hand, per the whole point of this feature); it shouldn't persist across reloads, shouldn't be
+// in an exported backup, and needs to survive this app's own full re-render-on-every-edit pattern,
+// which a native <details> element's open/closed state would not.
+let expandedUnaccounted = new Set();
+
+// ---------- Default seed data ----------
+function defaultState(){
+  // This is the Fellow instance of the NA Bev Variance Tracker, cloned from the Clever Koi /
+  // Central Phoenix build. Deliberately starts with NO items and NO periods — Fellow's real item
+  // list, vendors, pricing/cost, and a starting physical count haven't been gathered yet. Do not
+  // invent placeholder data here; the app already has an empty-state UI ("No items configured...
+  // Set up items in Settings") for exactly this situation, and ensureActivePeriod() will create
+  // Period 1 automatically the first time it's needed, once items exist.
+  const fellowItems = [];
+
+  return {
+    activeStore: 'fellow',
+    activeView: 'store', // 'store' | 'order' | 'settings'
+    // Independent of the weekly Flag (which only checks this week's purchased-vs-sold ratio and
+    // ignores carried-over stock, by design — see computeRow). This is a second, separate signal:
+    // regardless of what the weekly flag says, warn when the *cumulative pile* of unaccounted
+    // product for an item/week crosses this dollar amount. Catches the case where purchasing
+    // keeps roughly pace with sales every week (so the flag stays green) while a large real
+    // surplus quietly sits unaccounted for the whole time.
+    unaccountedAlertThreshold: 50,
+    stores: {
+      fellow: {
+        name: 'Fellow',
+        subtitle: '',
+        items: fellowItems,
+        periods: []
+      }
+    }
+  };
+}
+
+function emptyWeek(items){
+  const w = {};
+  items.forEach(it=>{
+    w[it.id] = { purchased:0, sold:0, discount:0, kitchen: it.defaultKitchen||0, notes:'', actualCount:'' };
+  });
+  return w;
+}
+
+// Real order windows per vendor. Empty until Fellow's actual vendors and order cadence are known
+// — slotsForVendor() below already falls back to a single generic 'Order' slot for any vendor not
+// listed here, so this is safe to leave blank rather than guessing at a cadence that matched
+// Central Phoenix's vendors (Shamrock/Passport), which may not apply to Fellow at all. Add real
+// entries here once Fellow's vendors and order-day pattern are confirmed.
+const VENDOR_SLOTS = {};
+function slotsForVendor(vendor){
+  return VENDOR_SLOTS[vendor] || ['Order'];
+}
+
+// One entry per item per week PER ORDER WINDOW (slot count depends on the item's vendor — 3 for
+// Shamrock, 1 for Passport): what Gary logs as actually ordered (qty, in the item's native unit)
+// and when. Separate from `purchased` (what MarginEdge shows arrived/invoiced) on purpose — an
+// order and what shows up can legitimately differ (backorder, sub, short-ship), and collapsing
+// them would hide that gap instead of surfacing it.
+function emptyOrders(items){
+  const o = {};
+  items.forEach(it=>{ o[it.id] = slotsForVendor(it.vendor).map(()=>({ qty:'', date:'' })); });
+  return o;
+}
+
+function newPeriod(items, name, startDate){
+  return {
+    name: name || 'Period 1',
+    startDate: startDate || '',
+    beginInv: {}, // item.id -> beginning on-hand units, entered once
+    weeks: [emptyWeek(items), emptyWeek(items), emptyWeek(items), emptyWeek(items)],
+    orders: [emptyOrders(items), emptyOrders(items), emptyOrders(items), emptyOrders(items)]
+  };
+}
+
+// ---------- State load/save ----------
+let state = load();
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return defaultState();
+    return normalizeLoadedState(JSON.parse(raw));
+  }catch(e){ return defaultState(); }
+}
+// Shared by load() (reading localStorage on page start) and importStateFile() (reading a backup
+// JSON handed off from someone else's browser, e.g. Nick -> Gary) — both start from a raw parsed
+// object of unknown vintage and need the same pruning/backfill pipeline applied before it's safe
+// to use as `state`.
+function normalizeLoadedState(parsed){
+  pruneRemovedStores(parsed);
+  migrateItemConfig(parsed);
+  migrateOrders(parsed);
+  if(parsed.unaccountedAlertThreshold === undefined) parsed.unaccountedAlertThreshold = 50;
+  return parsed;
+}
+// Saved state in localStorage is whatever shape it was the last time save() ran — it does NOT
+// pick up new fields added to an item's definition in defaultState() afterward (e.g. adding
+// Lemonade's `recipeUsage` link here later didn't retroactively add it to a browser's
+// already-saved Lemonade item, which silently broke Arnold Palmer recipe matching for anyone
+// who'd already used the app before that feature shipped). This backfills any default-item
+// config key that's missing on a saved item, matched by id, without touching keys the saved
+// item already has (so user edits like a changed price are never overwritten).
+// Gilbert and Scottsdale were removed from the app (Central Phoenix is the only store now) —
+// this drops them from a browser's already-saved state too, so an old localStorage doesn't leave
+// stale empty-store tabs sitting in the tab bar. Only ever removes stores that no longer exist in
+// defaultState(); never touches central's real data.
+function pruneRemovedStores(parsed){
+  if(!parsed || !parsed.stores) return;
+  const validKeys = Object.keys(defaultState().stores);
+  Object.keys(parsed.stores).forEach(key=>{
+    if(!validKeys.includes(key)) delete parsed.stores[key];
+  });
+  if(!validKeys.includes(parsed.activeStore)) parsed.activeStore = validKeys[0];
+}
+function migrateItemConfig(parsed){
+  if(!parsed || !parsed.stores) return;
+  const defaults = defaultState();
+  Object.keys(parsed.stores).forEach(storeKey=>{
+    const savedStore = parsed.stores[storeKey];
+    const defaultStore = defaults.stores[storeKey];
+    if(!savedStore || !defaultStore || !Array.isArray(savedStore.items)) return;
+    savedStore.items.forEach(savedItem=>{
+      const defaultItem = defaultStore.items.find(it=>it.id===savedItem.id);
+      if(!defaultItem) return;
+      Object.keys(defaultItem).forEach(key=>{
+        if(savedItem[key] === undefined) savedItem[key] = defaultItem[key];
+      });
+    });
+  });
+}
+// Same idea as migrateItemConfig, but for the `orders` array added to the period shape for the
+// Order Guide. Handles three cases without touching any order qty/date Gary's already entered:
+//   1. A period saved before the Order Guide shipped at all — no orders array yet.
+//   2. A period saved after a new item was added to the store, but before that item existed —
+//      missing key inside each week's orders object.
+//   3. A period saved under the very first Order Guide version, before real vendor order windows
+//      were added — orders were a single {qty,date} per item per week, not one per order slot.
+//      Wraps that single entry into a 1-element array; if the item's vendor now calls for more
+//      slots (e.g. 3 for Shamrock), the extra slots start blank rather than inventing data.
+function migrateOrders(parsed){
+  if(!parsed || !parsed.stores) return;
+  Object.keys(parsed.stores).forEach(key=>{
+    const store = parsed.stores[key];
+    if(!store || !Array.isArray(store.periods)) return;
+    store.periods.forEach(period=>{
+      if(!Array.isArray(period.orders)){
+        period.orders = period.weeks.map(()=>emptyOrders(store.items));
+      } else {
+        period.orders.forEach(o=>{
+          store.items.forEach(it=>{
+            const nSlots = slotsForVendor(it.vendor).length;
+            let cur = o[it.id];
+            if(!cur){
+              cur = [];
+            } else if(!Array.isArray(cur)){
+              cur = [cur]; // old single-slot {qty,date} format
+            }
+            while(cur.length < nSlots) cur.push({qty:'', date:''});
+            if(cur.length > nSlots) cur = cur.slice(0, nSlots);
+            o[it.id] = cur;
+          });
+        });
+      }
+    });
+  });
+}
+function save(){
+  localStorage.setItem(LS_KEY, JSON.stringify(state));
+}
+
+// ---------- Backup / handoff ----------
+// This app has no server and no accounts — every browser's data lives only in that browser's
+// localStorage. There's no automatic sync between, say, Nick's laptop and Gary's phone even
+// though they're both pointed at the same GitHub Pages URL. Export/Import exists solely to move a
+// full snapshot from one browser to another by hand (e.g. handing the tracker off to someone
+// else, or moving to a new device) — it is NOT a live sync mechanism. Whoever imports a backup
+// gets a point-in-time copy; the two browsers will drift apart the moment either one is edited
+// again, until someone exports/imports again.
+function exportStateFile(){
+  const dataStr = JSON.stringify(state, null, 2);
+  const blob = new Blob([dataStr], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `nabev-tracker-backup-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded');
+}
+function importStateFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    let parsed;
+    try{ parsed = JSON.parse(ev.target.result); }
+    catch(e){ alert('Could not read that file — it doesn\'t look like valid JSON.'); return; }
+    if(!parsed || typeof parsed !== 'object' || !parsed.stores){
+      alert('That file doesn\'t look like a NA Bev Tracker backup (missing expected data).');
+      return;
+    }
+    if(!confirm('This replaces everything currently in this browser — every period, item, and order — with what\'s in the imported file. This cannot be undone. Continue?')) return;
+    state = normalizeLoadedState(parsed);
+    save();
+    render();
+    showToast('Backup imported');
+  };
+  reader.readAsText(file);
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+// Buttons are recreated on every render() (the whole #app tree is rebuilt from scratch on any
+// state change), and in some browser environments a listener attached directly to a freshly
+// created element via addEventListener doesn't reliably receive real clicks (confirmed: a
+// document-level listener sees the click, a per-element one on the same element sometimes
+// doesn't). wireClick sidesteps that entirely: it stores the handler as a plain property instead
+// of registering a DOM listener, and a single delegated listener on `document` (installed once,
+// see bottom of script) finds the clicked element and calls its stored handler directly.
+function wireClick(el, fn){
+  if(!el) return;
+  el.dataset.clickable = '';
+  el.__clickHandler = fn;
+}
+
+// ---------- Math helpers ----------
+// Returns unit-equivalent purchased quantity (servings for gallon items, cans for can items)
+function purchasedServings(item, purchasedRaw){
+  if(item.unit === 'gallon'){
+    return (purchasedRaw * 128) / (item.pourOz || 1);
+  }
+  return purchasedRaw;
+}
+// Inverse of purchasedServings: converts a servings-equivalent number back to the item's native
+// unit (gallons for gallon items). Needed anywhere a servings-based value (like expectedOnHand's
+// output) needs to be stored back into a native-unit field like beginInv or Count, which always
+// get re-converted via purchasedServings() when read.
+function servingsToNative(item, servings){
+  if(item.unit === 'gallon'){
+    return (servings * (item.pourOz || 1)) / 128;
+  }
+  return servings;
+}
+function costPerServing(item){
+  if(item.unit === 'gallon'){
+    const servingsPerGal = 128 / (item.pourOz || 1);
+    return item.cost / servingsPerGal;
+  }
+  return item.cost;
+}
+// carryIn = stock already on hand entering this week (beginning inventory rolled forward through
+// prior weeks' purchased-vs-accounted flow — see balanceEnteringWeek). Defaults to 0, which
+// reproduces the old pure this-week-only Purchased-vs-Sold check; callers that aggregate across a
+// whole period (Period Summary, Compare Stores, the email export) intentionally omit it, since
+// the correct period-level total is still the sum of each week's own flow, not a running balance.
+// The live per-week table passes carryIn so an item that's fully stocked from a prior delivery and
+// simply wasn't purchased again this week doesn't show a false-alarm negative/red flag.
+function computeRow(item, weekData, carryIn){
+  carryIn = carryIn || 0;
+  const d = weekData[item.id] || {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''};
+  const purchased = parseFloat(d.purchased) || 0;
+  const sold = parseFloat(d.sold) || 0;
+  const discount = parseFloat(d.discount) || 0;
+  const kitchen = parseFloat(d.kitchen) || 0;
+  const purchU = purchasedServings(item, purchased);
+  // Rounded to a whole unit, not left as a raw ratio — a comp is always a whole physical item (a
+  // whole can, a whole 6oz pour), never a fraction of one, so discount$ ÷ price landing on
+  // something like 11.1 is estimation noise, not a real 0.1 of a comped item. Left unrounded, that
+  // noise fed straight into Accounted For and made it look like the app could report "25.1 Dr
+  // Peppers accounted for" — physically meaningless, and Nick caught it immediately.
+  const comped = item.price > 0 ? Math.round(discount / item.price) : 0;
+  // Corrected 2026-09-08: a fully-comped ($0) item does NOT get counted in Toast's "Qty sold" for
+  // this account's export — only paid (even if partially discounted) transactions land there. So
+  // comped units have to be added back in explicitly, or they silently vanish from the reconciliation
+  // (Nick caught this live on Coke: 48 purchased, 36 sold, 24 comped should account for 60 units, not
+  // 36 — the old formula was undercounting by exactly the comped amount every week, in every period).
+  const accountedFor = sold + comped + kitchen;
+  const available = carryIn + purchU; // what could have been sold this week: prior stock + new purchases
+  const unaccounted = available - accountedFor; // allow negative to show over-accounted
+  const cps = costPerServing(item);
+  const unaccountedCost = unaccounted * cps;
+  // % accounted and the flag stay anchored to this week's Purchased alone (not carryIn) — that's
+  // the "is what we bought this week showing up as sold" check, and it already special-cases
+  // purchU===0 as 100%/green rather than treating a no-purchase week as a red flag. carryIn only
+  // changes the raw Unaccounted number/cost above, so a fully-stocked item with no purchase this
+  // week shows an honest surplus instead of a scary negative, without changing how the flag reads.
+  const pctAccounted = purchU > 0 ? (accountedFor / purchU) * 100 : (accountedFor>0 ? 100 : 0);
+  let flag = 'green';
+  if(pctAccounted < 70) flag = 'red';
+  else if(pctAccounted < 85) flag = 'yellow';
+  return { purchased, purchU, sold, discount, comped, kitchen, accountedFor, unaccounted, unaccountedCost, pctAccounted, flag, cps,
+           actualCount: d.actualCount, notes: d.notes || '' };
+}
+
+// Stock on hand entering a given week index (0-3): beginning inventory for week 0, or the running
+// expected on-hand carried out of the prior week otherwise. Both this and expectedOnHand work in
+// serving-equivalent units throughout (matching purchU/accountedFor), so Beginning On-Hand and
+// Count — entered in the item's native unit, e.g. gallons for Lemonade — are converted the same
+// way Purchased is via purchasedServings(). Mixing raw gallons into a servings-based running total
+// would silently understate carryIn for any gallon item.
+function balanceEnteringWeek(store, period, item, weekIdx){
+  if(weekIdx <= 0) return purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
+  return expectedOnHand(store, period, item, weekIdx-1);
+}
+
+// Expected on-hand at end of a given week index (0-3), given period beginning inventory
+function expectedOnHand(store, period, item, uptoWeekIdx){
+  let onHand = purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
+  for(let w=0; w<=uptoWeekIdx; w++){
+    const r = computeRow(item, period.weeks[w]);
+    onHand = onHand + r.purchU - r.accountedFor;
+    // if an actual count was logged that week, it resets the running on-hand
+    const actual = parseFloat(period.weeks[w][item.id]?.actualCount);
+    if(!isNaN(actual) && period.weeks[w][item.id]?.actualCount !== ''){
+      onHand = purchasedServings(item, actual);
+    }
+  }
+  return onHand;
+}
+
+// Trailing average weekly usage (Sold + Kitchen use) for an item, walking backward from
+// (uptoPeriodIdx, uptoWeekIdx) inclusive across period boundaries so a brand-new period doesn't
+// reset the average to nothing. Skips weeks that look untouched (purchased/sold/kitchen all still
+// at their zero defaults) rather than counting them as real zero-usage weeks — there's no way to
+// tell "nothing sold" apart from "not entered yet" other than that heuristic, and treating an
+// empty future week as a real zero would drag the average down for no reason. Returns null if
+// there's no usable week yet (e.g. very first week of the very first period).
+function trailingAvgUsage(store, item, uptoPeriodIdx, uptoWeekIdx, n){
+  n = n || 4;
+  const collected = [];
+  let pIdx = uptoPeriodIdx, wIdx = uptoWeekIdx;
+  while(collected.length < n && pIdx >= 0){
+    const period = store.periods[pIdx];
+    while(wIdx >= 0 && collected.length < n){
+      const d = period.weeks[wIdx][item.id];
+      if(d && ((parseFloat(d.purchased)||0)>0 || (parseFloat(d.sold)||0)>0 || (parseFloat(d.kitchen)||0)>0)){
+        collected.push(computeRow(item, period.weeks[wIdx]).accountedFor);
+      }
+      wIdx--;
+    }
+    pIdx--;
+    if(pIdx>=0) wIdx = store.periods[pIdx].weeks.length-1;
+  }
+  if(collected.length===0) return null;
+  return collected.reduce((a,b)=>a+b,0)/collected.length;
+}
+
+// Most recent logged order for an item, strictly before (uptoPeriodIdx, uptoWeekIdx) — i.e. not
+// including the week currently being viewed, so "Last order" always means "before this one."
+// Walks backward across period boundaries the same way trailingAvgUsage does, and within a week,
+// backward across that item's order slots (slot 0 is earliest in the week, so scanning from the
+// last slot down finds the most recent one first).
+function lastOrder(store, uptoPeriodIdx, uptoWeekIdx, item){
+  const slotLabels = slotsForVendor(item.vendor);
+  let pIdx = uptoPeriodIdx, wIdx = uptoWeekIdx - 1;
+  if(wIdx < 0){ pIdx -= 1; if(pIdx>=0) wIdx = store.periods[pIdx].weeks.length-1; }
+  while(pIdx >= 0){
+    const period = store.periods[pIdx];
+    while(wIdx >= 0){
+      const arr = period.orders && period.orders[wIdx] && period.orders[wIdx][item.id];
+      if(Array.isArray(arr)){
+        for(let s=arr.length-1; s>=0; s--){
+          const o = arr[s];
+          if(o && parseFloat(o.qty) > 0){
+            return { qty: parseFloat(o.qty), date: o.date, label: period.name+', Week '+(wIdx+1)+' — '+(slotLabels[s]||'Order') };
+          }
+        }
+      }
+      wIdx--;
+    }
+    pIdx--;
+    if(pIdx>=0) wIdx = store.periods[pIdx].weeks.length-1;
+  }
+  return null;
+}
+
+function sustainedRed(period, itemId, uptoWeekIdx){
+  // true if this week AND the previous week are both red
+  if(uptoWeekIdx < 1) return false;
+  const store = getActiveStore();
+  const item = store.items.find(i=>i.id===itemId);
+  // Uses the same carry-in-aware flag as the on-screen row (see computeRow), so this badge never
+  // disagrees with what the Flag column itself is showing for those two weeks.
+  const r0 = computeRow(item, period.weeks[uptoWeekIdx], balanceEnteringWeek(store, period, item, uptoWeekIdx));
+  const r1 = computeRow(item, period.weeks[uptoWeekIdx-1], balanceEnteringWeek(store, period, item, uptoWeekIdx-1));
+  return r0.flag==='red' && r1.flag==='red';
+}
+
+function fmt$(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtN(n){ return (Math.round(n*10)/10).toLocaleString('en-US',{maximumFractionDigits:1}); }
+// Order Guide quantities specifically — you can't buy 0.4 of a case or 1.6 jugs, so these round to
+// whole numbers rather than the 1-decimal display used everywhere else (Variance/Period Summary
+// keep decimals since those are reconciliation math, not a literal thing you write on an order).
+// Suggested rounds UP: it's the number Gary actually orders, and rounding a real shortfall down
+// (say, 6.4 needed → 6) would under-order on purpose, which defeats the point of a par-based
+// suggestion. Everything else here is reference/context, so a plain round is fine.
+function fmtWhole(n){ return Math.round(n).toLocaleString('en-US'); }
+function fmtWholeUp(n){ return Math.ceil(n).toLocaleString('en-US'); }
+
+// ---------- App state getters ----------
+function getActiveStore(){ return state.stores[state.activeStore]; }
+function ensureActivePeriod(store){
+  if(store.periods.length===0){
+    store.periods.push(newPeriod(store.items, 'Period 1', ''));
+    store._activePeriodIdx = 0;
+    save();
+  }
+  if(store._activePeriodIdx === undefined) store._activePeriodIdx = store.periods.length-1;
+  if(store._activeWeekIdx === undefined) store._activeWeekIdx = 0;
+}
+
+// ---------- CSV import ----------
+// Minimal dependency-free CSV parser (handles quoted fields, embedded commas, "" escaped quotes).
+function parseCSV(text){
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; }
+        else { inQuotes = false; }
+      } else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\n' || c === '\r'){
+        if(c === '\r' && text[i+1] === '\n') i++;
+        row.push(field); field='';
+        if(!(row.length===1 && row[0]==='')) rows.push(row);
+        row=[];
+      } else field += c;
+    }
+  }
+  if(field!=='' || row.length){ row.push(field); rows.push(row); }
+  if(rows.length===0) return [];
+  const header = rows[0].map(h=>h.trim());
+  return rows.slice(1).map(r=>{
+    const obj={};
+    header.forEach((h,idx)=>{ obj[h]=(r[idx]!==undefined?r[idx]:'').trim(); });
+    return obj;
+  });
+}
+function normalizeName(s){
+  return (s||'').toLowerCase().replace(/\./g,'').replace(/[^a-z0-9]+/g,' ').trim();
+}
+function findCol(headerKeys, candidates){
+  for(const cand of candidates){
+    const hit = headerKeys.find(h=>h.toLowerCase().trim()===cand.toLowerCase());
+    if(hit) return hit;
+  }
+  return null;
+}
+// Uses a persistent <label for="..."> + <input type=file> pair (see renderStoreView) instead of a
+// dynamically-created, programmatically-.click()'d input — the label-triggers-input pattern is the
+// robust cross-browser way to open a file picker from a styled button and doesn't depend on a
+// synthetic .click() call being treated as a trusted user gesture.
+//
+// One dropzone handles both a Toast-style sales export (Item / Qty sold / Discount amt) and a
+// MarginEdge-style purchase report (Product / Purchased Units) — it sniffs the header row and
+// routes to the right parser, so there's nothing to pick or get wrong.
+function matchItemByName(store, rawName){
+  const norm = normalizeName(rawName);
+  const exact = store.items.find(it=>normalizeName(it.name)===norm);
+  if(exact) return exact;
+  // Fallback for verbose report names like "Soda, Diet Coke 12oz Can": match if the tracked
+  // item's name appears inside the row as a whole substring, preferring the longest/most
+  // specific match so "Diet Coke" wins over "Coke" on a "Diet Coke" row.
+  let best = null, bestLen = 0;
+  store.items.forEach(it=>{
+    const itNorm = normalizeName(it.name);
+    if(itNorm && norm.includes(itNorm) && itNorm.length > bestLen){
+      best = it; bestLen = itNorm.length;
+    }
+  });
+  return best;
+}
+function processAnyCsvFile(file, store, weekData, weekIdx){
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const text = String(ev.target.result).replace(/^﻿/, ''); // strip BOM some exports include
+    const rows = parseCSV(text);
+    if(rows.length===0){ alert('Could not read any rows from that CSV.'); return; }
+    const headerKeys = Object.keys(rows[0]);
+    const itemCol    = findCol(headerKeys, ['Item']);
+    const qtySoldCol = findCol(headerKeys, ['Qty sold','Qty Sold']);
+    const discCol    = findCol(headerKeys, ['Discount amt','Discount Amt']);
+    const productCol = findCol(headerKeys, ['Product']);
+    const unitsCol   = findCol(headerKeys, ['Purchased Units']);
+
+    if(itemCol && qtySoldCol){
+      const matches = [], unmatched = [], recipeMatches = [];
+      rows.forEach(r=>{
+        const rawName = r[itemCol];
+        if(!rawName || !rawName.trim()) return; // skip blank/total row
+        const qty = parseFloat(r[qtySoldCol])||0;
+        const disc = discCol ? (parseFloat(r[discCol])||0) : 0;
+        // Recipe-linked items (e.g. Arnold Palmer, which isn't rung in as "Lemonade" but is a
+        // guest sale that consumes lemonade as an ingredient) aren't tracked directly — they feed
+        // an addition on whichever tracked item lists them, instead of being matched/unmatched
+        // themselves. `addsTo` controls whether that addition counts as a guest Sold (the default —
+        // most recipe links are drinks guests order) or internal Kitchen use (e.g. a recipe that
+        // uses the item but isn't itself sold to a guest).
+        const norm = normalizeName(rawName);
+        let recipeHit = null;
+        store.items.forEach(it=>{
+          (it.recipeUsage||[]).forEach(ru=>{
+            if(normalizeName(ru.matchName)===norm) recipeHit = {item: it, ozPerUnit: ru.ozPerUnit, addsTo: ru.addsTo || 'sold'};
+          });
+        });
+        if(recipeHit){
+          const rawServings = recipeHit.item.pourOz ? (qty*recipeHit.ozPerUnit)/recipeHit.item.pourOz : qty*recipeHit.ozPerUnit;
+          const servings = Math.round(rawServings*10)/10;
+          recipeMatches.push({item: recipeHit.item, sourceName: rawName, sourceQty: qty, addedServings: servings, addsTo: recipeHit.addsTo});
+          return;
+        }
+        const item = matchItemByName(store, rawName);
+        if(item) matches.push({item, qty, disc, rawName});
+        else unmatched.push(rawName);
+      });
+      showCsvPreview(weekData, weekIdx, matches, unmatched, file.name, recipeMatches);
+    } else if(productCol && unitsCol){
+      const matches = [], unmatched = [];
+      rows.forEach(r=>{
+        const rawName = r[productCol];
+        if(!rawName || !rawName.trim()) return;
+        const item = matchItemByName(store, rawName);
+        const qty = parseFloat(r[unitsCol])||0;
+        if(item) matches.push({item, qty, rawName});
+        else unmatched.push(rawName);
+      });
+      showPurchasePreview(weekData, weekIdx, matches, unmatched, file.name);
+    } else {
+      alert('Could not recognize this CSV\'s format. Expected either a Toast sales export ("Item" + "Qty sold" columns) or a MarginEdge purchase report ("Product" + "Purchased Units" columns).');
+    }
+  };
+  reader.readAsText(file);
+}
+function showCsvPreview(weekData, weekIdx, matches, unmatched, fileName, recipeMatches){
+  recipeMatches = recipeMatches || [];
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);';
+  let html = `<h2 style="margin-top:0">Import Sales: ${fileName}</h2>`;
+  html += `<div class="info-note" style="margin-bottom:10px">Adds these quantities and discount $ to Week ${weekIdx+1}'s current values — doesn't overwrite, so it's safe to import multiple channel files for the same week.</div>`;
+  if(matches.length===0){
+    html += `<div class="info-note" style="color:var(--red)">No rows matched a tracked item.</div>`;
+  } else {
+    html += `<table><thead><tr><th class="left">Item</th><th>CSV qty</th><th>CSV disc $</th><th>Current sold</th><th>New sold</th></tr></thead><tbody>`;
+    matches.forEach(m=>{
+      const cur = weekData[m.item.id];
+      const curSold = parseFloat(cur.sold)||0;
+      html += `<tr><td class="left">${m.item.name}</td><td>${fmtN(m.qty)}</td><td>${fmt$(m.disc)}</td><td>${fmtN(curSold)}</td><td style="font-weight:700">${fmtN(curSold+m.qty)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  if(recipeMatches.length){
+    html += `<h3 style="margin-top:16px">Recipe use detected</h3>`;
+    html += `<div class="info-note" style="margin-bottom:8px">These aren't tracked items themselves, but they're made using a tracked item as an ingredient — adding to that item's Sold (a guest ordered it, just under a different name) or Kitchen use (an internal, non-guest use), depending on the item.</div>`;
+    html += `<table><thead><tr><th class="left">Source (CSV)</th><th>Qty sold</th><th class="left">Adds to</th><th class="left">As</th><th>Current</th><th>New</th></tr></thead><tbody>`;
+    recipeMatches.forEach(m=>{
+      const cur = weekData[m.item.id];
+      const curVal = parseFloat(cur[m.addsTo])||0;
+      const label = m.addsTo === 'sold' ? 'Sold' : 'Kitchen use';
+      html += `<tr><td class="left">${m.sourceName}</td><td>${fmtN(m.sourceQty)}</td><td class="left">${m.item.name}</td><td class="left">${label}</td><td>${fmtN(curVal)}</td><td style="font-weight:700">${fmtN(curVal+m.addedServings)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  if(unmatched.length){
+    html += `<div class="info-note" style="margin-top:10px;color:var(--yellow)">Unmatched CSV rows (not imported — check item name spelling, or these aren't tracked items): ${unmatched.join(', ')}</div>`;
+  }
+  const hasAnything = matches.length>0 || recipeMatches.length>0;
+  html += `<div class="rowflex" style="margin-top:16px"><button class="btn ghost" id="csvCancel">Cancel</button><button class="btn" id="csvConfirm" ${hasAnything?'':'disabled'}>Add to Week ${weekIdx+1}</button></div>`;
+  box.innerHTML = html;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  wireClick(box.querySelector('#csvCancel'), ()=> document.body.removeChild(overlay));
+  const confirmBtn = box.querySelector('#csvConfirm');
+  if(hasAnything){
+    wireClick(confirmBtn, ()=>{
+      matches.forEach(m=>{
+        const cur = weekData[m.item.id];
+        cur.sold = (parseFloat(cur.sold)||0) + m.qty;
+        cur.discount = (parseFloat(cur.discount)||0) + m.disc;
+      });
+      recipeMatches.forEach(m=>{
+        const cur = weekData[m.item.id];
+        cur[m.addsTo] = Math.round(((parseFloat(cur[m.addsTo])||0) + m.addedServings)*10)/10;
+      });
+      save();
+      document.body.removeChild(overlay);
+      showToast('Imported into Week '+(weekIdx+1));
+      render();
+    });
+  }
+}
+function showPurchasePreview(weekData, weekIdx, matches, unmatched, fileName){
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);';
+  let html = `<h2 style="margin-top:0">Import Purchases: ${fileName}</h2>`;
+  html += `<div class="info-note" style="margin-bottom:10px">Adds these quantities to Week ${weekIdx+1}'s current Purchased values — doesn't overwrite, so it's safe to import multiple invoices for the same week.</div>`;
+  if(matches.length===0){
+    html += `<div class="info-note" style="color:var(--red)">No rows matched a tracked item.</div>`;
+  } else {
+    html += `<table><thead><tr><th class="left">Item</th><th class="left">CSV row</th><th>Purchased qty</th><th>Current</th><th>New</th></tr></thead><tbody>`;
+    matches.forEach(m=>{
+      const cur = weekData[m.item.id];
+      const curP = parseFloat(cur.purchased)||0;
+      html += `<tr><td class="left">${m.item.name}</td><td class="left" style="font-weight:400;color:var(--muted);font-size:11.5px">${m.rawName}</td><td>${fmtN(m.qty)}</td><td>${fmtN(curP)}</td><td style="font-weight:700">${fmtN(curP+m.qty)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  if(unmatched.length){
+    html += `<div class="info-note" style="margin-top:10px;color:var(--yellow)">Unmatched CSV rows (not imported — check item name spelling, or these aren't tracked items): ${unmatched.join(', ')}</div>`;
+  }
+  html += `<div class="rowflex" style="margin-top:16px"><button class="btn ghost" id="pCancel">Cancel</button><button class="btn" id="pConfirm" ${matches.length===0?'disabled':''}>Add to Week ${weekIdx+1}</button></div>`;
+  box.innerHTML = html;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  wireClick(box.querySelector('#pCancel'), ()=> document.body.removeChild(overlay));
+  const confirmBtn = box.querySelector('#pConfirm');
+  if(matches.length>0){
+    wireClick(confirmBtn, ()=>{
+      matches.forEach(m=>{
+        const cur = weekData[m.item.id];
+        cur.purchased = (parseFloat(cur.purchased)||0) + m.qty;
+      });
+      save();
+      document.body.removeChild(overlay);
+      showToast('Imported purchases for '+matches.length+' item(s) into Week '+(weekIdx+1));
+      render();
+    });
+  }
+}
+
+// ---------- Render ----------
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.innerHTML = `<h1>NA Bev Variance Tracker</h1><div class="sub">Weekly purchased-vs-accounted-for reconciliation, per item, per store.</div>`;
+  app.appendChild(header);
+
+  // Top-level tabs: stores + compare + settings
+  const tabbar = document.createElement('div');
+  tabbar.className = 'tabbar';
+  Object.keys(state.stores).forEach(key=>{
+    const b = document.createElement('button');
+    b.className = 'tab' + (state.activeView==='store' && state.activeStore===key ? ' active':'');
+    // Tab label describes the view's function (matching Order Guide/Compare Periods/Settings)
+    // rather than the store's name — with a single store, the name no longer distinguishes
+    // anything, and it never told you what was on the tab anyway. The store's actual name is
+    // untouched everywhere else (Order Guide header, email subject, Compare Periods).
+    b.textContent = 'Sales vs Purchasing';
+    wireClick(b, ()=>{ state.activeStore=key; state.activeView='store'; save(); render(); });
+    tabbar.appendChild(b);
+  });
+  const orderBtn = document.createElement('button');
+  orderBtn.className = 'tab' + (state.activeView==='order' ? ' active':'');
+  orderBtn.textContent = '📦 Order Guide';
+  wireClick(orderBtn, ()=>{ state.activeView='order'; save(); render(); });
+  tabbar.appendChild(orderBtn);
+
+  const compareBtn = document.createElement('button');
+  compareBtn.className = 'tab' + (state.activeView==='compare' ? ' active':'');
+  compareBtn.textContent = '⇄ Compare Periods';
+  wireClick(compareBtn, ()=>{ state.activeView='compare'; save(); render(); });
+  tabbar.appendChild(compareBtn);
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.className = 'tab' + (state.activeView==='settings' ? ' active':'');
+  settingsBtn.textContent = '⚙ Settings';
+  wireClick(settingsBtn, ()=>{ state.activeView='settings'; save(); render(); });
+  tabbar.appendChild(settingsBtn);
+
+  app.appendChild(tabbar);
+
+  if(state.activeView==='compare'){ renderCompare(app); return; }
+  if(state.activeView==='settings'){ renderSettings(app); return; }
+  if(state.activeView==='order'){ renderOrderGuide(app); return; }
+  renderStoreView(app);
+}
+
+function renderStoreView(app){
+  const store = getActiveStore();
+  if(store.items.length===0){
+    const card = document.createElement('div');
+    card.className='card empty-state';
+    card.innerHTML = `<div>No items configured for <strong>${store.name}</strong> yet.</div>
+      <button class="btn" id="goSettings">Set up items in Settings</button>`;
+    app.appendChild(card);
+    wireClick(card.querySelector('#goSettings'), ()=>{ state.activeView='settings'; save(); render(); });
+    return;
+  }
+  ensureActivePeriod(store);
+  const period = store.periods[store._activePeriodIdx];
+
+  // Period bar
+  const pcard = document.createElement('div');
+  pcard.className = 'card';
+  pcard.innerHTML = `<div class="rowflex">
+    <div>
+      <h3 style="margin-bottom:4px">Period</h3>
+      <div class="rowflex" style="gap:8px">
+        <select id="periodSelect"></select>
+        <input type="text" class="wide" id="periodName" value="${period.name}" placeholder="Period name">
+        <input type="text" style="width:120px" id="periodStart" value="${period.startDate}" placeholder="Start date">
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn secondary small" id="newPeriodBtn">+ New Period</button>
+    </div>
+  </div>`;
+  app.appendChild(pcard);
+
+  const periodSelect = pcard.querySelector('#periodSelect');
+  store.periods.forEach((p,i)=>{
+    const o=document.createElement('option'); o.value=i; o.textContent=p.name; if(i===store._activePeriodIdx) o.selected=true;
+    periodSelect.appendChild(o);
+  });
+  periodSelect.onchange = ()=>{ store._activePeriodIdx = parseInt(periodSelect.value); store._activeWeekIdx=0; save(); render(); };
+  pcard.querySelector('#periodName').oninput = (e)=>{ period.name = e.target.value; save(); };
+  pcard.querySelector('#periodStart').oninput = (e)=>{ period.startDate = e.target.value; save(); };
+  wireClick(pcard.querySelector('#newPeriodBtn'), ()=>{
+    const carry = {};
+    // expectedOnHand returns a servings-equivalent number; beginInv is a native-unit field
+    // (gallons for Lemonade, per the "(gal)" input label), so it needs converting back or a
+    // gallon item's next period starts over 21x too high (128oz/gal ÷ 6oz pour).
+    // Order-only items (Passport coffee/tea) never participate in this reconciliation flow at
+    // all — but a purchase CSV can still incidentally match one of them (e.g. a broader
+    // MarginEdge report with a "Coffee, Whole Bean" line), leaving a stray non-zero purchased
+    // value sitting on some week. Carrying that through expectedOnHand would produce a
+    // meaningless computed "beginning inventory" for an item that was never actually tracked —
+    // so these are skipped here rather than carried forward.
+    store.items.filter(it=>!it.orderOnly).forEach(it=>{ carry[it.id] = servingsToNative(it, expectedOnHand(store, period, it, 3)); });
+    const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
+    np.beginInv = carry;
+    store.periods.push(np);
+    store._activePeriodIdx = store.periods.length-1;
+    store._activeWeekIdx = 0;
+    save(); render();
+  });
+
+  // Beginning inventory row (period-level, optional)
+  const invCard = document.createElement('div');
+  invCard.className = 'card';
+  invCard.innerHTML = `<h3>Beginning on-hand (optional — enables count reconciliation)</h3>`;
+  const invRow = document.createElement('div');
+  invRow.style.display='flex'; invRow.style.gap='14px'; invRow.style.flexWrap='wrap';
+  // Order-only items (Passport coffee/tea) don't participate in variance reconciliation at all —
+  // showing them here would imply they're tracked when they're not.
+  store.items.filter(it=>!it.orderOnly).forEach(it=>{
+    const f = document.createElement('div'); f.className='settings-field';
+    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    const inp = document.createElement('input'); inp.type='text'; inp.value = period.beginInv[it.id] ?? '';
+    inp.oninput = (e)=>{ period.beginInv[it.id] = e.target.value; save(); };
+    f.appendChild(inp);
+    invRow.appendChild(f);
+  });
+  invCard.appendChild(invRow);
+  app.appendChild(invCard);
+
+  // Ending on-hand — NOT a separate field. This reads/writes the exact same data as Week 4's
+  // Count column (period.weeks[3][item.id].actualCount); it's surfaced here as its own card so
+  // the period's close-out count is visible without switching to the Week 4 tab, and easy to
+  // fix if something was missed. There's only one number underneath either way — editing it
+  // here or editing it inline on Week 4 both write to the same place, so they can never drift
+  // out of sync with each other.
+  const endCard = document.createElement('div');
+  endCard.className = 'card';
+  endCard.innerHTML = `<h3>Ending on-hand (optional — this period's close-out count, same field as Week 4's Count column)</h3>`;
+  const endRow = document.createElement('div');
+  endRow.style.display='flex'; endRow.style.gap='14px'; endRow.style.flexWrap='wrap';
+  const lastWeekData = period.weeks[3];
+  store.items.filter(it=>!it.orderOnly).forEach(it=>{
+    const f = document.createElement('div'); f.className='settings-field';
+    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    const inp = document.createElement('input'); inp.type='text'; inp.value = lastWeekData[it.id].actualCount ?? '';
+    inp.addEventListener('change', (e)=>{ lastWeekData[it.id].actualCount = e.target.value; save(); render(); });
+    f.appendChild(inp);
+    endRow.appendChild(f);
+  });
+  endCard.appendChild(endRow);
+  app.appendChild(endCard);
+
+  // Week tabs
+  const wcard = document.createElement('div');
+  wcard.className='card';
+  const wt = document.createElement('div'); wt.className='weektabs';
+  [0,1,2,3].forEach(i=>{
+    const b=document.createElement('button');
+    b.className='weektab'+(store._activeWeekIdx===i?' active':'');
+    b.textContent='Week '+(i+1);
+    wireClick(b, ()=>{ store._activeWeekIdx=i; save(); render(); });
+    wt.appendChild(b);
+  });
+  wcard.appendChild(wt);
+
+  const weekIdx = store._activeWeekIdx;
+  const weekData = period.weeks[weekIdx];
+
+  const importInput = document.createElement('input');
+  importInput.type = 'file';
+  importInput.accept = '.csv';
+  importInput.id = 'csvFileInput';
+  importInput.style.cssText = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  importInput.onchange = (e)=>{
+    const file = e.target.files[0];
+    if(file) processAnyCsvFile(file, store, weekData, weekIdx);
+    importInput.value = '';
+  };
+  const importLabel = document.createElement('label');
+  importLabel.setAttribute('for', 'csvFileInput');
+  importLabel.className = 'csv-dropzone';
+  importLabel.innerHTML = `<span class="csv-icon">📥</span><span>Drag a <strong>sales</strong> or <strong>purchases</strong> CSV here, or click to import <span class="csv-sub">— Week ${weekIdx+1}, auto-detected</span></span>`;
+  wcard.appendChild(importInput);
+  wcard.appendChild(importLabel);
+
+  // The whole card is the drop target (not just the small dashed box) so an imprecise drop still
+  // lands correctly, and a window-level dragover/drop guard stops the browser's default
+  // navigate-to-file behavior if a drop ever lands outside it. processAnyCsvFile sniffs the CSV's
+  // header row to tell a Toast sales export apart from a MarginEdge purchase report, so either
+  // file type can be dropped on the same zone.
+  wcard.addEventListener('dragover', (e)=>{ e.preventDefault(); wcard.classList.add('csv-dragover'); });
+  wcard.addEventListener('dragleave', (e)=>{
+    if(!wcard.contains(e.relatedTarget)) wcard.classList.remove('csv-dragover');
+  });
+  wcard.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    wcard.classList.remove('csv-dragover');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(file) processAnyCsvFile(file, store, weekData, weekIdx);
+  });
+
+  const table = document.createElement('table');
+  table.innerHTML = `<thead>
+    <tr>
+      <th class="left" rowspan="2">Item</th>
+      <th class="group-header this-week" colspan="7">This week</th>
+      <th class="group-header running-total" colspan="2">Running total <span class="sub">(since period start)</span></th>
+      <th rowspan="2">Count (opt.)</th>
+      <th class="left" rowspan="2">Notes</th>
+    </tr>
+    <tr>
+      <th>Purchased</th>
+      <th title="Guest-paid units only, across every sales channel — does not include fully comped (free) items. Those are tracked separately in Comped and added back into Accounted For automatically.">Sold (paid)‡</th>
+      <th>Discount $</th>
+      <th>Comped*</th>
+      <th title="Sold (paid) + Comped — every unit that left the building through any channel, whether it was paid for or comped. (Kitchen use dropped as a visible column since nothing currently routes to it — see CHANGELOG.)">Accounted for</th>
+      <th title="This week's Accounted for ÷ this week's Purchased. Doesn't include stock carried over from prior weeks — a week with 0 Purchased and some Sold still shows 100%, since there was nothing new to reconcile. Shown as 100%+ when more got sold than was purchased this week — not an error, just means some of what sold came from stock bought before this week.">% of purchases†</th>
+      <th>Flag</th>
+      <th>Unaccounted</th>
+      <th>Unacct. cost</th>
+    </tr>
+  </thead>`;
+  const tbody = document.createElement('tbody');
+
+  let totUnacctCost=0, totPurchU=0, totAccounted=0, totUnacctUnits=0;
+
+  // Order-only items (coffee/tea via Passport) have no sales data and aren't part of NA Bev
+  // variance reconciliation — they only appear in the Order Guide.
+  store.items.filter(it=>!it.orderOnly).forEach(item=>{
+    const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
+    const r = computeRow(item, weekData, carryIn);
+    totUnacctCost += r.unaccountedCost;
+    totPurchU += r.purchU;
+    totAccounted += r.accountedFor;
+    totUnacctUnits += r.unaccounted;
+
+    const tr = document.createElement('tr');
+    const sustained = sustainedRed(period, item.id, weekIdx);
+    // Independent of r.flag on purpose — see the threshold's comment in defaultState(). r.flag
+    // only ever looks at this week's purchased-vs-sold ratio; this looks at the actual size of
+    // the unaccounted pile (in dollars, so it's comparable across items of very different volume/
+    // cost), regardless of what this week's ratio says. A week can be green on flow and still
+    // trip this if there's a large real surplus sitting unaccounted. Attached to the Unacct. cost
+    // cell (the Running total group) rather than next to the Flag badge (the This week group) —
+    // putting "OK" and "⚠ LARGE" side by side in the same cell read as a contradiction, when
+    // they're actually answering two different questions about two different time windows.
+    const threshold = state.unaccountedAlertThreshold ?? 50;
+    const isLargeUnaccounted = Math.abs(r.unaccountedCost) >= threshold;
+    // Gallon-tracked items (Lemonade) show every number in this row as servings-equivalent — every
+    // Purchased/Sold/Comped/Accounted-for/Unaccounted figure is in the same unit Gary actually rings
+    // at the POS (1 lemonade = 1 serving), converted from gallons purchased via 128oz/gal ÷ pourOz.
+    // That wasn't labeled on the numbers themselves at first (just a long note under the item name,
+    // which overflowed the table sideways — this version is short on purpose) and Nick read a 141.7
+    // unaccounted as "142 ounces," off by 100x+ from the real figure. Now "sv" is on the number
+    // itself, with the gallon-equivalent underneath for checking against an actual jug count.
+    const unitNote = item.unit==='gallon' ? `servings (${item.pourOz}oz pour)` : '';
+    const unitSuffix = item.unit==='gallon' ? ' sv' : '';
+    const unaccountedLabel = item.unit==='gallon'
+      ? `${fmtN(r.unaccounted)} sv<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, r.unaccounted))} gal</div>`
+      : fmtN(r.unaccounted);
+    // "Show the math" toggle — the whole point is Gary shouldn't have to reconstruct this
+    // arithmetic by hand to trust the number (which is exactly what tripped Nick up on Coke and
+    // the Lemonade gallon conversion). Off by default so the table stays as clean as it was before
+    // — expandedUnaccounted persists across this app's full re-renders so it doesn't collapse the
+    // instant Gary edits some other field in the table.
+    const breakdownKey = item.id + ':' + weekIdx;
+    const isExpanded = expandedUnaccounted.has(breakdownKey);
+    // Gallon items get their own version of this breakdown, in jugs — the servings-based version
+    // (170.7 sv, 29 sv) is exactly the math, but Nick called it "too analytical": nobody thinks in
+    // servings-equivalents, they think in jugs bought and drinks poured. Purchased/carried-in
+    // convert cleanly back to whole/fractional jugs (the servings math is just an intermediate
+    // step, not something Gary needs to see), and only the sold+comped total gets converted to a
+    // jug-equivalent, since that's the number that's actually comparable to what's missing.
+    const breakdown = isExpanded ? (
+      item.unit === 'gallon' ? `
+      <div class="info-note" style="margin-top:6px; text-align:left; max-width:220px; white-space:normal">
+        Available: ${fmtN(servingsToNative(item, carryIn))} jugs carried in + ${fmtN(r.purchased)} jugs bought = ${fmtN(servingsToNative(item, carryIn + r.purchU))} jugs<br>
+        − Poured out: ${fmtN(r.sold)} sold + ${fmtN(r.comped)} comped = ${fmtN(r.accountedFor)} lemonades (≈${fmtN(servingsToNative(item, r.accountedFor))} jugs)<br>
+        = <strong>${fmtN(servingsToNative(item, r.unaccounted))} jugs unaccounted</strong>
+      </div>` : `
+      <div class="info-note" style="margin-top:6px; text-align:left; max-width:220px; white-space:normal">
+        Available: ${fmtN(carryIn)} carried in + ${fmtN(r.purchU)} bought = ${fmtN(carryIn + r.purchU)}${unitSuffix}<br>
+        − Accounted for: ${fmtN(r.sold)} sold + ${fmtN(r.comped)} comped${r.kitchen ? ' + '+fmtN(r.kitchen)+' kitchen' : ''} = ${fmtN(r.accountedFor)}${unitSuffix}<br>
+        = <strong>${fmtN(r.unaccounted)}${unitSuffix} unaccounted</strong>
+      </div>`
+    ) : '';
+    tr.innerHTML = `
+      <td class="left"><strong>${item.name}</strong><div class="info-note" style="margin:0">${unitNote}</div></td>
+      <td><input type="text" data-f="purchased" value="${weekData[item.id].purchased}"></td>
+      <td><input type="text" data-f="sold" value="${weekData[item.id].sold}"></td>
+      <td><input type="text" data-f="discount" value="${weekData[item.id].discount}"></td>
+      <td>${fmtN(r.comped)}</td>
+      <td>${fmtN(r.accountedFor)}</td>
+      <td title="${r.pctAccounted.toFixed(0)}% exactly (${fmtN(r.accountedFor)} accounted for ÷ ${fmtN(r.purchU)} purchased this week)${(r.purchU>0 && r.accountedFor>r.purchU)?' — sold more than was purchased this week, using stock from before':''}">${(r.purchU>0 && r.accountedFor>r.purchU) ? '100%+' : r.pctAccounted.toFixed(0)+'%'}</td>
+      <td><span class="flag ${r.flag}">${r.flag==='green'?'OK':r.flag==='yellow'?'WATCH':'FLAG'}</span>${sustained?'<span class="sustained">2+ wks</span>':''}</td>
+      <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${unaccountedLabel} <button type="button" class="info-toggle" data-breakdown-key="${breakdownKey}" title="Show the math behind this number">${isExpanded?'▲':'ⓘ'}</button>${breakdown}</td>
+      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(r.unaccountedCost)}${isLargeUnaccounted?`<span class="flag alert-large" title="Running total unaccounted cost ${fmt$(r.unaccountedCost)} is at or above your $${threshold} alert threshold — this is the accumulated pile since period start, separate from This Week's Flag">⚠ Large</span>`:''}</td>
+      <td><input type="text" data-f="actualCount" value="${weekData[item.id].actualCount}" placeholder="—"></td>
+      <td class="left"><textarea class="note" data-f="notes">${weekData[item.id].notes}</textarea></td>
+    `;
+    tbody.appendChild(tr);
+
+    wireClick(tr.querySelector('.info-toggle'), ()=>{
+      if(expandedUnaccounted.has(breakdownKey)) expandedUnaccounted.delete(breakdownKey);
+      else expandedUnaccounted.add(breakdownKey);
+      renderStoreViewInPlace();
+    });
+
+    // 'change' (fires on blur/Enter), not 'input' (fires per keystroke) — this table's handler
+    // re-renders the whole page to recompute Accounted for/Unaccounted/Flag/Total, and doing that
+    // on every keystroke destroys and rebuilds the very input you're mid-typing into, silently
+    // dropping every character after the first (typing "49" only ever saved "4"). 'change' commits
+    // once you leave the field, so the browser's native text input handles the typing untouched.
+    tr.querySelectorAll('input, textarea').forEach(inp=>{
+      inp.addEventListener('change', (e)=>{
+        weekData[item.id][e.target.dataset.f] = e.target.value;
+        save();
+        renderStoreViewInPlace();
+      });
+    });
+  });
+
+  // total row — column order matches the header: Item, Purchased, [Sold/Discount/Comped
+  // skipped], Accounted for, % of purchases, Flag, Unaccounted, Unacct. cost, [Count/Notes skipped]
+  const pctTot = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+  const pctTotDisplay = (totPurchU>0 && totAccounted>totPurchU) ? '100%+' : pctTot.toFixed(0)+'%';
+  const trTot = document.createElement('tr');
+  trTot.className='total-row';
+  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td colspan="3"></td><td>${fmtN(totAccounted)}</td><td title="${pctTot.toFixed(0)}% exactly">${pctTotDisplay}</td><td></td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
+  tbody.appendChild(trTot);
+
+  table.appendChild(tbody);
+  wcard.appendChild(table);
+  // insertAdjacentHTML, not innerHTML +=: the latter re-serializes and reparses every existing
+  // child of wcard (including the week tab buttons wired up above), which silently destroys the
+  // click handlers wireClick just attached to them. This was the actual cause of week-switching
+  // not working — not a browser quirk, a bug in this line.
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, rounded to a whole item — added into "Accounted for" on top of "Sold." ‡"Sold (paid)" is guest-paid units only; a fully comped item doesn't ring as a sale, so it wouldn't otherwise show up as accounted for at all. †"This week" columns (including % of purchases and Flag) only look at what happened this week — this week's Purchased vs. this week's Accounted for — and ignore stock left over from prior weeks, so a slow week with 0 Purchased still shows 100%/green instead of a false alarm. "Running total" columns (Unaccounted, Unacct. cost) are the opposite: the full accumulated pile, including everything carried over since the period started. The two can disagree on purpose — a green Flag with a "⚠ Large" badge means this week's buying-and-selling looks fine, but there's still a real backlog of product sitting unaccounted for overall. Period Summary and the email export total each week's own This-Week flow, not this running balance. "Count" lets you log an actual physical cooler count for this week; entering it resets the running total used for next week's check.</div>`);
+  app.appendChild(wcard);
+
+  function renderStoreViewInPlace(){
+    render();
+  }
+
+  // Period summary card
+  renderPeriodSummary(app, store, period);
+}
+
+function renderPeriodSummary(app, store, period){
+  const card = document.createElement('div');
+  card.className='card';
+  card.innerHTML = `<div class="rowflex"><h2>Period Summary — ${period.name}</h2>
+    <button class="btn secondary small" id="copyEmailBtn">📋 Copy Email</button></div>`;
+
+  let totUnacctCost=0, totUnacctUnits=0, totRetail=0, totPurchU=0, totAccounted=0, totAvail=0;
+  // Comp vs. revenue split: `comped` and `sold` here are the same fields computeRow already
+  // derives (comped = discount$ / price). Corrected 2026-09-08 alongside the accountedFor fix:
+  // `sold` is guest-PAID units only — a fully comped item doesn't ring as a sale in this account's
+  // Toast export, so it's never in `sold` to begin with. Total units that left the building is
+  // sold + comped, and that combined total is the right denominator/base for both rates below, not
+  // sold alone (which would understate comp rate and overstate revenue realized). Deliberately two
+  // separate percentages, not one — comp rate (units) and revenue realized (dollars) diverge on
+  // purpose, since a comped unit is a full unit but zero revenue. See CHANGELOG for the Nick/Gary
+  // discussion this came out of.
+  let totSold=0, totComp=0, totDisc=0, totGrossPotential=0, totUnitsAll=0;
+  const perItem = store.items.filter(it=>!it.orderOnly).map(item=>{
+    let pu=0, ac=0, ua=0, uc=0, av=0, soldSum=0, compSum=0, discSum=0;
+    period.weeks.forEach((w, weekIdx)=>{
+      // Fixed 2026-09-09: this used to call computeRow(item, w) with no carryIn, which silently
+      // defaults to 0 (see computeRow's signature). That's fine week-to-week in the Variance table,
+      // which passes carryIn explicitly — but here it meant Period Summary only ever compared
+      // "purchased this period" against "sold+comped this period" and ignored beginning inventory
+      // entirely. The moment a period opens with a real beginning-inventory count (as Period 9 did),
+      // sold+comped legitimately exceeds purchased-this-period, and Unaccounted swung negative while
+      // % accounted read >100% and green — even though, once beginning inventory is counted as
+      // available stock, the period was actually only ~58% accounted for. carryIn now comes from the
+      // same balanceEnteringWeek() the Variance table already trusts, so "available" here means the
+      // same thing it means everywhere else in the app: carried-in stock + what was purchased.
+      const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
+      const r = computeRow(item, w, carryIn);
+      pu+=r.purchU; ac+=r.accountedFor; ua+=r.unaccounted; uc+=r.unaccountedCost; av+=carryIn+r.purchU;
+      soldSum+=r.sold; compSum+=r.comped; discSum+=r.discount;
+    });
+    totUnacctCost+=uc; totUnacctUnits+=ua; totPurchU+=pu; totAccounted+=ac; totAvail+=av;
+    totRetail += Math.max(ua,0)*item.price;
+    const totalUnits = soldSum + compSum;
+    const grossPotential = totalUnits * item.price;
+    totSold+=soldSum; totComp+=compSum; totDisc+=discSum; totGrossPotential+=grossPotential; totUnitsAll+=totalUnits;
+    const compRatePct = totalUnits>0 ? (compSum/totalUnits*100) : 0;
+    const revenueRealizedPct = grossPotential>0 ? ((grossPotential-discSum)/grossPotential*100) : 0;
+    return {item, pu, ac, ua, uc, av, totalUnits, compSum, discSum, compRatePct, revenueRealizedPct};
+  });
+  const margin = totRetail - Math.max(totUnacctCost,0);
+  const totCompRatePct = totUnitsAll>0 ? (totComp/totUnitsAll*100) : 0;
+  const totRevenueRealizedPct = totGrossPotential>0 ? ((totGrossPotential-totDisc)/totGrossPotential*100) : 0;
+
+  const kpis = document.createElement('div');
+  kpis.className='kpi-grid';
+  kpis.innerHTML = `
+    <div class="kpi"><div class="label">Unaccounted units</div><div class="value red">${fmtN(totUnacctUnits)}</div></div>
+    <div class="kpi"><div class="label">Unaccounted cost</div><div class="value red">${fmt$(totUnacctCost)}</div></div>
+    <div class="kpi"><div class="label">Retail value if sold</div><div class="value">${fmt$(totRetail)}</div></div>
+    <div class="kpi"><div class="label">Margin never captured</div><div class="value red">${fmt$(margin)}</div></div>
+    <div class="kpi"><div class="label">% accounted, period</div><div class="value ${totAvail>0 && totAccounted/totAvail>=0.85 ? 'green':''}" title="Accounted for ÷ (beginning inventory + purchased this period) — includes stock carried in, not purchases alone.">${totAvail>0?((totAccounted/totAvail)*100).toFixed(0):'—'}%</div></div>
+    <div class="kpi" title="Staff comp perk units ÷ (paid units + comped units), all channels. Comp $ backed out from discount $ ÷ menu price."><div class="label">Staff comp rate</div><div class="value">${totUnitsAll>0?totCompRatePct.toFixed(0):'—'}%</div></div>
+    <div class="kpi" title="What was actually billed vs. what the same units would have billed at full menu price. The gap is the comp perk cost, not lost/unaccounted product."><div class="label">Revenue realized</div><div class="value ${totGrossPotential>0 && totRevenueRealizedPct>=90 ? 'green':''}">${totGrossPotential>0?totRevenueRealizedPct.toFixed(0):'—'}%</div></div>
+  `;
+  card.appendChild(kpis);
+
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th>Unaccounted</th><th>% acct.</th><th>Cost</th><th title="Staff comp units ÷ (paid units + comped units) this period">Comp %</th><th title="Billed $ ÷ full-price potential $ this period — the gap is the comp perk, not missing product">Revenue %</th></tr></thead>`;
+  const tb = document.createElement('tbody');
+  perItem.forEach(({item,pu,ac,ua,uc,av,totalUnits,compRatePct,revenueRealizedPct})=>{
+    const pct = av>0 ? (ac/av*100) : 0;
+    const flag = pct<70?'red':pct<85?'yellow':'green';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="left">${item.name}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td>${fmtN(ua)}</td><td><span class="flag ${flag}">${pct.toFixed(0)}%</span></td><td>${fmt$(uc)}</td><td>${totalUnits>0?compRatePct.toFixed(0)+'%':'—'}</td><td>${totalUnits>0?revenueRealizedPct.toFixed(0)+'%':'—'}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+  app.appendChild(card);
+
+  wireClick(card.querySelector('#copyEmailBtn'), ()=>{
+    const text = generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted);
+    navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
+      const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); showToast('Email copied to clipboard');
+    });
+  });
+}
+
+function generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted){
+  const pct = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+  let lines = [];
+  lines.push(`Subject: NA Beverage Purchase vs. Sales Variance — ${store.name} (${period.name}${period.startDate ? ', starting '+period.startDate : ''})`);
+  lines.push('');
+  lines.push('Team,');
+  lines.push('');
+  lines.push(`Purchasing vs. sales on NA Bev for the period, all channels included.`);
+  lines.push('');
+  perItem.sort((a,b)=>b.uc-a.uc).forEach(({item,pu,ac,ua,uc})=>{
+    const p = pu>0 ? (ac/pu*100) : 0;
+    lines.push(`${item.name} — Purchased: ${fmtN(pu)} | Accounted for: ${fmtN(ac)} | Unaccounted: ${fmtN(ua)} (${p.toFixed(0)}%) | Cost: ${fmt$(uc)}`);
+  });
+  lines.push('');
+  lines.push(`Total — Unaccounted: ${fmtN(totUnacctUnits)} | Cost: ${fmt$(totUnacctCost)} | ${pct.toFixed(0)}% accounted for overall.`);
+  lines.push('');
+  lines.push(`"Accounted for" includes every channel and every employee comp — comped units are added on top of paid Sold, since a fully comped item doesn't ring as a sale on its own.`);
+  lines.push('');
+  lines.push(`Bottom line: ${fmt$(totUnacctCost)} in product cost with no matching transaction. At menu price that's roughly ${fmt$(totRetail)} in sales, or ${fmt$(margin)} in gross margin never captured.`);
+  lines.push('');
+  lines.push(`This isn't about the employee meal comp perk — that stays as is. Just tightening up the numbers.`);
+  lines.push('');
+  lines.push('Next: spot-check vendor invoices, then a short physical cooler count on the flagged items.');
+  lines.push('');
+  lines.push('Nick');
+  return lines.join('\n');
+}
+
+// ---------- Order Guide ----------
+// Forward-looking decision support for whoever's placing NA Bev orders (Gary) — deliberately kept
+// separate from the Variance view's job (retrospective: did what we bought show up as a sale).
+// This view answers a different question: given usage so far, what should the next order be. It
+// shares the same store/item config and the same period+week the Variance view is on, but reads
+// its own `orders` log rather than writing to `weeks`.
+function renderOrderGuide(app){
+  const store = getActiveStore();
+  if(store.items.length===0){
+    const card = document.createElement('div');
+    card.className='card empty-state';
+    card.innerHTML = `<div>No items configured for <strong>${store.name}</strong> yet.</div>
+      <button class="btn" id="goSettingsOG">Set up items in Settings</button>`;
+    app.appendChild(card);
+    wireClick(card.querySelector('#goSettingsOG'), ()=>{ state.activeView='settings'; save(); render(); });
+    return;
+  }
+  ensureActivePeriod(store);
+  const periodIdx = store._activePeriodIdx;
+  const period = store.periods[periodIdx];
+  const weekIdx = store._activeWeekIdx;
+
+  const head = document.createElement('div');
+  head.className = 'card';
+  head.innerHTML = `<div class="rowflex">
+    <div>
+      <h2 style="margin-bottom:2px">Order Guide — ${store.name}</h2>
+      <div class="info-note" style="margin:0">${period.name}, Week ${weekIdx+1}${period.startDate?' · starting '+period.startDate:''}. Order windows below are real vendor cadence (Shamrock 3x/wk, Passport weekly), not tied to this week boundary the way the Variance view is — use the selector just to pick which week's orders you're logging.</div>
+    </div>
+    <select id="ogWeekSelect"></select>
+  </div>`;
+  app.appendChild(head);
+  const wsel = head.querySelector('#ogWeekSelect');
+  [0,1,2,3].forEach(i=>{
+    const o=document.createElement('option'); o.value=i; o.textContent='Week '+(i+1); if(i===weekIdx) o.selected=true;
+    wsel.appendChild(o);
+  });
+  wsel.onchange = ()=>{ store._activeWeekIdx = parseInt(wsel.value); save(); render(); };
+
+  const orderData = period.orders[weekIdx];
+
+  // Group items by vendor, in the order vendors first appear in store.items (Shamrock, then
+  // Passport, matching Gary's sheet), so each vendor gets its own table with its own order-window
+  // columns — one submission per vendor is how he actually places these.
+  const vendors = [];
+  store.items.forEach(it=>{
+    const v = it.vendor || '(no vendor)';
+    if(!vendors.includes(v)) vendors.push(v);
+  });
+
+  vendors.forEach(vendor=>{
+    const items = store.items.filter(it=>(it.vendor||'(no vendor)')===vendor);
+    const slots = slotsForVendor(vendor==='(no vendor)' ? '' : vendor);
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    let html = `<h2 style="margin-bottom:10px">${vendor}</h2>`;
+    html += `<table><thead><tr>
+      <th class="left">Item</th>
+      <th class="left">Size</th>
+      <th>Unit price</th>
+      <th>Avg wk usage*</th>
+      <th>Par target</th>
+      <th>Est. on-hand†</th>
+      <th>Suggested (wk)</th>`;
+    slots.forEach(label=>{ html += `<th class="left">${label}</th>`; });
+    html += `</tr></thead><tbody>`;
+    card.innerHTML = html;
+    const tbody = document.createElement('tbody');
+
+    items.forEach(item=>{
+      // Fixed 2026-09-09: this used to fall back to the generic, meaningless "units" for can items
+      // (Coke etc.) and label Avg wk usage/Par target "svg" (servings) even for those same can
+      // items, when those two numbers are already in native units for anything that isn't
+      // gallon-tracked — servingsToNative only actually converts gallon items, so a can item's
+      // "avg usage" was already a plain can count with a nonsense unit slapped on it. Every number
+      // in this row now shows the same real, physical unit — the one Gary would write on an actual
+      // order (cans, jugs, lbs, cases) — matching what "Purchased" means on the Variance side, so
+      // ordering and reconciliation never disagree about what "1" means for a given item.
+      const unitLabel = item.unit==='gallon' ? 'jugs' : item.unit==='lb' ? 'lbs' : item.unit==='case' ? 'cases' : item.unit==='can' ? 'cans' : 'units';
+      let avgUsage=null, parTarget=null, onHand=null, suggestedNative=null;
+      if(!item.orderOnly){
+        avgUsage = trailingAvgUsage(store, item, periodIdx, weekIdx);
+        const mult = item.parMultiplier ?? 1.3;
+        parTarget = avgUsage===null ? null : avgUsage * mult;
+        // Through-and-including this week, not just entering it — the freshest running balance
+        // available, reflecting whatever's been imported/entered for this week so far. This is a
+        // whole-week figure; with real sales data only arriving at weekly granularity, splitting
+        // it further across Shamrock's 3 order windows would be false precision, so "Suggested"
+        // stays a per-week guide even though logging below is per order window.
+        onHand = expectedOnHand(store, period, item, weekIdx);
+        const suggestedServings = parTarget===null ? null : Math.max(0, parTarget - onHand);
+        suggestedNative = suggestedServings===null ? null : servingsToNative(item, suggestedServings);
+      }
+      const last = lastOrder(store, periodIdx, weekIdx, item);
+
+      const tr = document.createElement('tr');
+      let rowHtml = `
+        <td class="left"><strong>${item.name}</strong>${last ? `<div class="info-note" style="margin:0">Last: ${fmtN(last.qty)} ${unitLabel} · ${last.date||'no date'} (${last.label})</div>` : ''}</td>
+        <td class="left">${item.sizeLabel||''}</td>
+        <td>${item.cost ? fmt$(item.cost) : '—'}</td>
+        <td>${avgUsage===null ? '—' : fmtWhole(servingsToNative(item, avgUsage))+' '+unitLabel}</td>
+        <td>${parTarget===null ? '—' : fmtWhole(servingsToNative(item, parTarget))+' '+unitLabel}</td>
+        <td>${onHand===null ? '—' : fmtWhole(servingsToNative(item, onHand))+' '+unitLabel}</td>
+        <td style="font-weight:700; color:${suggestedNative ? 'var(--teal)':'var(--ink)'}">${suggestedNative===null?'—':fmtWholeUp(suggestedNative)+' '+unitLabel}</td>
+      `;
+      const arr = orderData[item.id] || [];
+      slots.forEach((label, s)=>{
+        const entry = arr[s] || {qty:'', date:''};
+        rowHtml += `<td class="left"><input type="text" style="width:60px" data-slot="${s}" data-f="qty" value="${entry.qty}" placeholder="${unitLabel}" title="Enter the order quantity in ${unitLabel} — same unit as Suggested above, and what you'd log as Purchased once it arrives.">
+          <input type="text" style="width:88px" data-slot="${s}" data-f="date" value="${entry.date}" placeholder="date"></td>`;
+      });
+      tr.innerHTML = rowHtml;
+      tbody.appendChild(tr);
+      tr.querySelectorAll('input').forEach(inp=>{
+        inp.addEventListener('input', (e)=>{
+          const s = parseInt(e.target.dataset.slot);
+          if(!Array.isArray(orderData[item.id])) orderData[item.id] = slots.map(()=>({qty:'',date:''}));
+          if(!orderData[item.id][s]) orderData[item.id][s] = {qty:'', date:''};
+          orderData[item.id][s][e.target.dataset.f] = e.target.value;
+          save();
+        });
+      });
+    });
+
+    const table = card.querySelector('table');
+    table.appendChild(tbody);
+    app.appendChild(card);
+  });
+
+  const noteCard = document.createElement('div');
+  noteCard.className = 'card';
+  noteCard.insertAdjacentHTML('beforeend', `<div class="info-note">Every number in a row — Avg wk usage, Par target, Est. on-hand, Suggested, and the qty you type below — is in the same physical unit (cans, jugs, lbs, or cases, shown on each), the same unit you'd write on an actual order and the same one "Purchased" uses on the Sales vs Purchasing tab. All whole numbers here — you can't buy a fraction of a can or a jug. Suggested specifically rounds up rather than down, so it never quietly recommends ordering short. Ordering in cases instead of individual cans? Convert using the count in the Size column (e.g. "24/cs" = 24 per case). *Avg wk usage = trailing average of Accounted for (Sold + Comped + Kitchen use) over the last up to 4 weeks with real data entered, spanning back across prior periods if needed. Order-only items (no sales data, e.g. Passport coffee/tea) always show "—" here — nothing to base a suggestion on. †Est. on-hand = beginning inventory rolled forward through purchased-vs-accounted flow (same running balance as the Variance view), as of whatever's been imported/entered so far this week. Suggested = Par target (avg usage × per-item multiplier, set in Settings) − Est. on-hand, floored at zero — a whole-week guide, not split per order window. Log actual order qty/date per window below; it becomes "Last order" the next time you view this item.</div>`);
+  app.appendChild(noteCard);
+}
+
+// ---------- Compare view ----------
+// Was "Cross-Store Comparison" (one row per store, each store's latest period) back when there
+// were multiple stores. With only Central Phoenix left, comparing stores would collapse to a
+// single row — not useful. Repurposed to compare periods instead: one row per period for this
+// store, so you can see whether % accounted / unaccounted cost are trending in the right
+// direction period over period, which nothing else in the app currently shows (Period Summary
+// only ever shows one period at a time).
+function renderCompare(app){
+  const store = getActiveStore();
+  const card = document.createElement('div');
+  card.className='card';
+  card.innerHTML = `<h2>Compare Periods — ${store.name}</h2><div class="info-note" style="margin-bottom:10px">Each period's totals side by side, oldest to newest, so you can see whether things are trending in the right direction.</div>`;
+
+  const rows = [];
+  if(store.items.length>0){
+    store.periods.forEach(period=>{
+      let totPurchU=0, totAccounted=0, totUnacctCost=0, totAvail=0;
+      let worst = null;
+      store.items.filter(it=>!it.orderOnly).forEach(item=>{
+        // Fixed 2026-09-09: same carryIn bug as Period Summary — computeRow(item,w) with no third
+        // argument silently ignored beginning inventory, so a period that opened with real
+        // beginning-inventory (like P9) showed accounted-for outrunning purchased and swung
+        // negative/>100%. Now uses balanceEnteringWeek() like the Variance table, and "% accounted"
+        // is measured against available (carryIn + purchased), not purchased alone.
+        let pu=0, ac=0, uc=0, av=0;
+        period.weeks.forEach((w, weekIdx)=>{
+          const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
+          const r = computeRow(item, w, carryIn);
+          pu+=r.purchU; ac+=r.accountedFor; uc+=r.unaccountedCost; av+=carryIn+r.purchU;
+        });
+        totPurchU+=pu; totAccounted+=ac; totUnacctCost+=uc; totAvail+=av;
+        const pct = av>0 ? ac/av*100 : 100;
+        if(!worst || pct < worst.pct) worst = {name:item.name, pct};
+      });
+      const pctAcct = totAvail>0 ? (totAccounted/totAvail*100) : null;
+      rows.push({name: period.name, startDate: period.startDate, pctAcct, totUnacctCost, worst});
+    });
+  }
+
+  if(rows.length===0){
+    card.insertAdjacentHTML('beforeend', `<div class="empty-state">No periods yet.</div>`);
+    app.appendChild(card);
+    return;
+  }
+
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th class="left">Period</th><th class="left">Start date</th><th>% accounted</th><th>Unaccounted cost</th><th class="left">Worst item</th></tr></thead>`;
+  const tb = document.createElement('tbody');
+  rows.forEach(r=>{
+    const flag = r.pctAcct===null ? '' : r.pctAcct<70?'red':r.pctAcct<85?'yellow':'green';
+    tb.appendChild(Object.assign(document.createElement('tr'), {innerHTML:
+      `<td class="left">${r.name}</td><td class="left">${r.startDate||'—'}</td>
+       <td>${r.pctAcct===null?'—':'<span class="flag '+flag+'">'+r.pctAcct.toFixed(0)+'%</span>'}</td>
+       <td>${fmt$(r.totUnacctCost)}</td>
+       <td class="left">${r.worst ? r.worst.name+' ('+r.worst.pct.toFixed(0)+'%)' : '—'}</td>`
+    }));
+  });
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+
+  const chartWrap = document.createElement('div');
+  chartWrap.className='compare-bar-wrap';
+  const canvas = document.createElement('canvas');
+  chartWrap.appendChild(canvas);
+  card.appendChild(chartWrap);
+  app.appendChild(card);
+
+  new Chart(canvas, {
+    type:'bar',
+    data:{
+      labels: rows.map(r=>r.name),
+      datasets:[{ label:'Unaccounted cost ($)', data: rows.map(r=>Math.round(r.totUnacctCost*100)/100),
+        backgroundColor:'#2dd4bf', borderRadius:6 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ ticks:{color:'#8996a5'}, grid:{color:'rgba(255,255,255,.05)'} },
+        y:{ ticks:{color:'#8996a5'}, grid:{color:'rgba(255,255,255,.05)'} }
+      }
+    }
+  });
+}
+
+// ---------- Settings ----------
+function renderSettings(app){
+  const backupCard = document.createElement('div');
+  backupCard.className = 'card';
+  backupCard.innerHTML = `<h3>Backup &amp; Handoff</h3>
+    <div class="info-note" style="margin-bottom:8px">Everything in this app — periods, sales, purchases, orders, item setup — lives only in this browser. Nothing syncs automatically between devices, even on the same link. To hand this off to someone else (or move to a new device), export a backup here and have them import it once on their end. This is a one-time snapshot, not live sync — re-export and re-share whenever you want the other side to catch up.</div>
+    <div class="rowflex" style="gap:10px; flex-wrap:wrap">
+      <button class="btn secondary small" id="exportBtn">⬇ Export backup (.json)</button>
+      <label class="btn secondary small" style="cursor:pointer; margin:0">⬆ Import backup (.json)
+        <input type="file" id="importFile" accept="application/json" style="display:none">
+      </label>
+    </div>`;
+  app.appendChild(backupCard);
+  wireClick(backupCard.querySelector('#exportBtn'), exportStateFile);
+  backupCard.querySelector('#importFile').addEventListener('change', (e)=>{
+    importStateFile(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  const alertCard = document.createElement('div');
+  alertCard.className = 'card';
+  alertCard.innerHTML = `<h3>Alerts</h3>
+    <div class="info-note" style="margin-bottom:8px">The weekly Flag (OK/WATCH/FLAG) only checks this week's purchased-vs-sold ratio — a large pile of unaccounted product can otherwise sit there indefinitely without tripping it, as long as purchasing keeps roughly pace with sales each week. This is a second, independent check: any week where an item's unaccounted <em>cost</em> is at or above this dollar amount gets a separate "⚠ LARGE" badge, regardless of what the weekly Flag says.</div>
+    <div class="settings-field"><label>Unaccounted $ alert threshold</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>`;
+  app.appendChild(alertCard);
+  alertCard.querySelector('#alertThreshold').addEventListener('change', (e)=>{
+    const v = parseFloat(e.target.value);
+    state.unaccountedAlertThreshold = isNaN(v) ? 50 : v;
+    save(); render();
+  });
+
+  Object.keys(state.stores).forEach(key=>{
+    const store = state.stores[key];
+    const card = document.createElement('div');
+    card.className='card';
+    card.innerHTML = `<div class="rowflex"><h2>${store.name}</h2><button class="btn small secondary" data-add="${key}">+ Add item</button></div>`;
+    const list = document.createElement('div');
+    store.items.forEach((item, idx)=>{
+      const row = document.createElement('div');
+      row.className='settings-item';
+      row.innerHTML = `
+        <div class="settings-field"><label>Name</label><input type="text" class="wide" data-k="name" value="${item.name}"></div>
+        <div class="settings-field"><label>Unit</label>
+          <select data-k="unit">
+            <option value="can" ${item.unit==='can'?'selected':''}>can/unit</option>
+            <option value="gallon" ${item.unit==='gallon'?'selected':''}>gallon</option>
+          </select>
+        </div>
+        <div class="settings-field"><label>Price ($)</label><input type="text" data-k="price" value="${item.price}"></div>
+        <div class="settings-field"><label>Cost ($)</label><input type="text" data-k="cost" value="${item.cost}"></div>
+        <div class="settings-field"><label>Pour oz (gallon items)</label><input type="text" data-k="pourOz" value="${item.pourOz ?? ''}"></div>
+        <div class="settings-field"><label>Default kitchen use/wk</label><input type="text" data-k="defaultKitchen" value="${item.defaultKitchen ?? 0}"></div>
+        <div class="settings-field"><label>Par multiplier</label><input type="text" data-k="parMultiplier" value="${item.parMultiplier ?? 1.3}"></div>
+        <div class="settings-field"><label>Vendor</label><input type="text" data-k="vendor" value="${item.vendor ?? ''}" placeholder="e.g. Shamrock"></div>
+        <div class="settings-field"><label>Size (Order Guide)</label><input type="text" data-k="sizeLabel" value="${item.sizeLabel ?? ''}" placeholder="e.g. 12 oz (24/cs)"></div>
+        <div class="settings-field"><label>Order-only (no sales data)</label>
+          <select data-k="orderOnly">
+            <option value="false" ${!item.orderOnly?'selected':''}>No</option>
+            <option value="true" ${item.orderOnly?'selected':''}>Yes</option>
+          </select>
+        </div>
+        <button class="btn danger small" data-remove="${idx}">Remove</button>
+      `;
+      row.querySelectorAll('input,select').forEach(inp=>{
+        inp.addEventListener('change', (e)=>{
+          const k = e.target.dataset.k;
+          let v = e.target.value;
+          if(['price','cost','pourOz','defaultKitchen','parMultiplier'].includes(k)) v = v===''? null : parseFloat(v);
+          if(k==='orderOnly') v = v==='true';
+          const vendorChanged = k==='vendor' && v!==item.vendor;
+          item[k]=v;
+          if(vendorChanged){
+            // Order-window slot count depends on vendor — resize every existing orders entry for
+            // this item so the UI and data stay in sync (migrateOrders would also catch this on
+            // next reload, but doing it now means it's correct immediately, no refresh needed).
+            store.periods.forEach(p=>{
+              if(!Array.isArray(p.orders)) return;
+              p.orders.forEach(o=>{
+                const nSlots = slotsForVendor(item.vendor).length;
+                let cur = Array.isArray(o[item.id]) ? o[item.id] : [];
+                while(cur.length < nSlots) cur.push({qty:'', date:''});
+                if(cur.length > nSlots) cur = cur.slice(0, nSlots);
+                o[item.id] = cur;
+              });
+            });
+          }
+          save();
+        });
+      });
+      wireClick(row.querySelector('[data-remove]'), ()=>{
+        store.items.splice(idx,1); save(); render();
+      });
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    wireClick(card.querySelector('[data-add]'), ()=>{
+      const newItem = {id:'item'+Date.now(), name:'New Item', unit:'can', price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'', sizeLabel:'', orderOnly:false};
+      store.items.push(newItem);
+      store.periods.forEach(p=>{
+        p.weeks.forEach(w=>{ w[newItem.id] = {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''}; });
+        if(Array.isArray(p.orders)) p.orders.forEach(o=>{ o[newItem.id] = slotsForVendor(newItem.vendor).map(()=>({qty:'', date:''})); });
+      });
+      save(); render();
+    });
+    app.appendChild(card);
+  });
+
+  const resetCard = document.createElement('div');
+  resetCard.className='card';
+  resetCard.innerHTML = `<h3>Reset</h3><div class="info-note" style="margin-bottom:8px">Clears all tracked data for every store. Item configuration is kept.</div>
+    <button class="btn danger small" id="resetData">Clear all weekly data</button>`;
+  wireClick(resetCard.querySelector('#resetData'), ()=>{
+    if(confirm('Clear all weekly/period data for every store? Item settings will be kept.')){
+      Object.values(state.stores).forEach(s=>{ s.periods=[]; s._activePeriodIdx=undefined; s._activeWeekIdx=undefined; });
+      save(); render();
+    }
+  });
+  app.appendChild(resetCard);
+}
+
+// Safety net: without this, dropping a file anywhere on the page outside an active dropzone
+// makes the browser navigate away to display the raw file instead of doing nothing.
+window.addEventListener('dragover', (e)=> e.preventDefault());
+window.addEventListener('drop', (e)=> e.preventDefault());
+
+// Single delegated click listener backing every wireClick() button (see wireClick above). This
+// listener is attached once, to `document`, and never gets removed/recreated — unlike the
+// buttons themselves, which are torn down and rebuilt on every render(). Delegating from a
+// stable, permanent element is what makes clicks reliably register.
+document.addEventListener('click', (e)=>{
+  const el = e.target.closest('[data-clickable]');
+  if(el && typeof el.__clickHandler === 'function') el.__clickHandler(e);
+});
+
+render();
+</script>
+</body>
+</html>
