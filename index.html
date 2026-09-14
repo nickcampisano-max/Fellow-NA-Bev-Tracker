@@ -59,6 +59,11 @@
     border: 1px solid var(--border); border-radius: 12px;
     padding: 16px 18px; margin-bottom: 16px;
     box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    /* A wide table (more columns than the card can fit) scrolls within its own card instead of
+       stretching the whole page sideways — that page-wide drift was the actual "layout looks
+       broken" complaint, not the table itself being wrong. Harmless on cards with no table:
+       nothing overflows, so no scrollbar ever appears. */
+    max-width: 100%; overflow-x: auto;
   }
   .card h2 { font-size: 15px; margin: 0 0 10px; color: var(--ink); }
   .card h3 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -83,15 +88,15 @@
   .weektab.active { background: var(--teal); color: var(--teal-ink); border-color: var(--teal); }
 
   table { width: 100%; border-collapse: collapse; font-size: 12.8px; }
-  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th, td { padding: 6px 6px; text-align: center; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   td:first-child, th:first-child { text-align: left; }
   td.left, th.left { text-align: left; }
   tr.total-row td { font-weight: 700; border-top: 2px solid var(--teal); border-bottom: none; color: var(--ink); }
 
   input[type=text], input[type=number] {
-    width: 68px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 6px;
-    font-size: 12.8px; text-align: right; background: var(--bg); color: var(--ink);
+    width: 56px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 4px;
+    font-size: 12.8px; text-align: center; background: var(--bg); color: var(--ink);
   }
   input.wide { width: 130px; text-align: left; }
   input:focus { outline: 2px solid var(--teal-glow); border-color: var(--teal); }
@@ -100,10 +105,6 @@
   .flag.green { background: var(--green-bg); color: var(--green); }
   .flag.yellow { background: var(--yellow-bg); color: var(--yellow); }
   .flag.red { background: var(--red-bg); color: var(--red); }
-  .sustained { font-size: 10.5px; color: var(--red); font-weight: 700; display: block; margin-top: 2px; }
-  /* Deliberately a different color from the red/yellow/green flag — this is a separate signal
-     (cumulative unaccounted $ pile) from the weekly flag (this week's purchased-vs-sold ratio),
-     and shouldn't be visually confused with it even when they happen to coincide. */
   .flag.alert-large { background: #4a2408; color: #fb923c; margin-left: 4px; }
   /* Groups the week table's columns into two visually distinct bands — "This Week" (the flow
      check: did what got bought this week get sold) vs "Running Total" (the accumulated pile,
@@ -172,11 +173,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <script>
-// Deliberately a different key from the Clever Koi tracker's 'nabev_tracker_v1'. If this ever
-// gets hosted under the same GitHub Pages username as Clever Koi's (e.g. two repos under
-// nickcampisano-max.github.io), that's still the same origin as far as localStorage is concerned
-// — different paths do NOT get separate storage, only different origins do. A shared key would
-// silently let one tracker's save overwrite the other's data. Keep this unique per store/brand.
 const LS_KEY = 'fellow_bev_tracker_v1';
 // Which item/week Unaccounted breakdowns are currently expanded — deliberately NOT part of
 // `state`/localStorage. This is pure UI state (so Gary can check the math without redoing it by
@@ -187,30 +183,67 @@ let expandedUnaccounted = new Set();
 
 // ---------- Default seed data ----------
 function defaultState(){
-  // This is the Fellow instance of the NA Bev Variance Tracker, cloned from the Clever Koi /
-  // Central Phoenix build. Deliberately starts with NO items and NO periods — Fellow's real item
-  // list, vendors, pricing/cost, and a starting physical count haven't been gathered yet. Do not
-  // invent placeholder data here; the app already has an empty-state UI ("No items configured...
-  // Set up items in Settings") for exactly this situation, and ensureActivePeriod() will create
-  // Period 1 automatically the first time it's needed, once items exist.
-  const fellowItems = [];
+  // Fellow Osteria's NA bev list, taken from the P9-ending MarginEdge count (the actual
+  // "Non-Alcoholic Bev Cost (5250)" category), not from the all-shops cost sheet — that sheet is
+  // shared across concepts and had stale prices and items Fellow doesn't carry.
+  //   Costs: value / count from that same count, cross-checked against Passport's 9/13 order guide.
+  //   Espresso: $12.05/lb landed = the 8/25 invoice's $11.30 plus the $0.75/bag packing fee.
+  //     NOT MarginEdge's $3.77/lb, which is the $11.30 bag divided by a bad 3 lb conversion
+  //     (the product description carries the text "3LB MINIMUM ORDER").
+  //   Menu prices: Fellow's Toast product mix. Items with price 0 are cocktail or cafe
+  //     ingredients that never ring on their own — their draw shows up as expected-on-hand
+  //     variance until a recipe layer exists to account for it.
+  //   Portion sizes for the teas, drip coffee, matcha and syrups are estimates from the old cost
+  //     sheet, NOT confirmed by Fellow — see the note in chat. The espresso portion is confirmed
+  //     (MarginEdge's own shot recipe: 0.63 oz of beans yields one 2 fl oz shot).
+  // Unlike Central Phoenix, the coffee/tea/syrup items are NOT order-only here: isolating the
+  // bar's espresso draw is the whole reason this instance exists, so they have to reconcile.
+  const fellowItems = [
+    {id:'coke', name:"Soda, Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.963, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
+    {id:'dietcoke', name:"Soda, Diet Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.958, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
+    {id:'sprite', name:"Soda, Sprite 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.96, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
+    {id:'rootbeer', name:"Soda, Root Beer 12oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.5, cost:0.71, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz btl", orderOnly:false},
+    {id:'clubsoda', name:"Club Soda 10oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.0, cost:1.115, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"10 oz btl", orderOnly:false},
+    {id:'gingerbeer', name:"Ginger Beer 7.5oz Can", unit:'can', unitOz:null, pourOz:null, price:6.0, cost:1.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"7.5 oz can", orderOnly:false},
+    {id:'jarritos', name:"Jarritos Grapefruit 12.5oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:0, cost:1.063, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12.5 oz btl", orderOnly:false},
+    {id:'panna', name:"Acqua Panna Still Water 16.9oz", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:7.0, cost:1.533, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"16.9 oz btl", orderOnly:false},
+    {id:'pellegrino', name:"Pellegrino Sparkling", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:8.0, cost:1.596, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"btl", orderOnly:false},
+    {id:'lemonade', name:"Lemonade", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:8.18, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal jug", orderOnly:false},
+    {id:'wholemilk', name:"Milk, Whole", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:6.54, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal", orderOnly:false},
+    {id:'almondmilk', name:"Milk, Almond", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:6, price:0, cost:3.284, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (12/cs)", orderOnly:false},
+    {id:'oatmilk', name:"Milk, Oat", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:6, price:0, cost:3.297, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (6/cs)", orderOnly:false},
+    {id:'espresso', name:"Coffee, Espresso", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.63, price:0, cost:12.05, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 lb bag", orderOnly:false},
+    {id:'espressodecaf', name:"Coffee, Espresso Decaf", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.63, price:0, cost:11.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 lb bag", orderOnly:false},
+    {id:'tuscany', name:"Coffee, Tuscany Blend (drip)", unit:'gallon', unitLabel:'case', unitOz:1920, pourOz:10, price:5.0, cost:80.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"3.0 oz case", orderOnly:false},
+    {id:'engbreakfast', name:"Tea, English Breakfast", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.07, price:0, cost:12.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"2 lb bag", orderOnly:false},
+    {id:'greenrice', name:"Tea, Hot Green w/ Rice", unit:'gallon', unitLabel:'bag', unitOz:32, pourOz:0.07, price:7.0, cost:26.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"2 lb bag", orderOnly:false},
+    {id:'icesencha', name:"Tea, Ice Green Sencha", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:5.0, cost:79.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false},
+    {id:'icetropical', name:"Tea, Ice Tropical Black", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:4.5, cost:69.25, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false},
+    {id:'matcha', name:"Matcha Powder", unit:'gallon', unitLabel:'bag', unitOz:17.6, pourOz:0.25, price:0, cost:33.35, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1.1 lb bag", orderOnly:false},
+    {id:'chai', name:"Syrup, Chai", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:2, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'caramel', name:"Syrup, Caramel", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'vanilla', name:"Syrup, Vanilla", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'hazelnut', name:"Syrup, Hazelnut", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'pumpkin', name:"Syrup, Pumpkin Spice", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'chocsauce', name:"Sauce, Dark Chocolate", unit:'gallon', unitLabel:'btl', unitOz:64, pourOz:1, price:0, cost:16.4, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"64 oz btl", orderOnly:false},
+    {id:'stevia', name:"Stevia Packets (Green)", unit:'can', unitLabel:'case', unitOz:null, pourOz:null, price:0, cost:32.97, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"case", orderOnly:true},
+    {id:'sugar', name:"Sugar, In The Raw Packets", unit:'can', unitLabel:'case', unitOz:null, pourOz:null, price:0, cost:32.29, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"case", orderOnly:true}
+  ];
+  // P10 runs Mon Aug 31 - Sun Sep 27, 2026. Beginning on-hand = the P9-ending count, each item in
+  // its own native unit (lb, case, qt, btl, gal, or each).
+  const fellowP10 = newPeriod(fellowItems, 'Period 10 (Aug 31 - Sep 27)', '2026-08-31');
+  fellowP10.beginInv = {"coke": 54, "dietcoke": 41, "sprite": 74, "rootbeer": 12, "clubsoda": 43, "gingerbeer": 22, "jarritos": 29, "panna": 34, "pellegrino": 40, "lemonade": 1, "wholemilk": 1, "almondmilk": 9.4, "oatmilk": 11.5, "espresso": 10, "espressodecaf": 0.5, "tuscany": 1.3, "engbreakfast": 1, "greenrice": 0.66, "icesencha": 1.21, "icetropical": 1.21, "matcha": 0.78, "chai": 0.9, "caramel": 0.5, "vanilla": 0.75, "hazelnut": 0.75, "pumpkin": 0.75, "chocsauce": 0.6, "stevia": 0.3, "sugar": 2.8};
 
   return {
     activeStore: 'fellow',
     activeView: 'store', // 'store' | 'order' | 'settings'
-    // Independent of the weekly Flag (which only checks this week's purchased-vs-sold ratio and
-    // ignores carried-over stock, by design — see computeRow). This is a second, separate signal:
-    // regardless of what the weekly flag says, warn when the *cumulative pile* of unaccounted
-    // product for an item/week crosses this dollar amount. Catches the case where purchasing
-    // keeps roughly pace with sales every week (so the flag stays green) while a large real
-    // surplus quietly sits unaccounted for the whole time.
     unaccountedAlertThreshold: 50,
     stores: {
       fellow: {
-        name: 'Fellow',
+        name: 'Fellow Osteria',
         subtitle: '',
         items: fellowItems,
-        periods: []
+        periods: [fellowP10]
       }
     }
   };
@@ -224,11 +257,12 @@ function emptyWeek(items){
   return w;
 }
 
-// Real order windows per vendor. Empty until Fellow's actual vendors and order cadence are known
-// — slotsForVendor() below already falls back to a single generic 'Order' slot for any vendor not
-// listed here, so this is safe to leave blank rather than guessing at a cadence that matched
-// Central Phoenix's vendors (Shamrock/Passport), which may not apply to Fellow at all. Add real
-// entries here once Fellow's vendors and order-day pattern are confirmed.
+// Real order windows per vendor, matching Gary's existing ordering sheet — Shamrock (sodas/
+// lemonade) gets three separate orders a week, Passport (coffee/tea) gets one. This is what the
+// Order Guide's cadence is actually keyed to, not the Variance view's Mon–Sun week grid: a
+// suggested/logged quantity now means "this specific order window," not "this calendar week."
+// Fellow's order days for Shamrock and Passport aren't confirmed yet, so every vendor falls
+// back to a single generic 'Order' slot below. Fill this in once the cadence is known.
 const VENDOR_SLOTS = {};
 function slotsForVendor(vendor){
   return VENDOR_SLOTS[vendor] || ['Order'];
@@ -413,9 +447,30 @@ function wireClick(el, fn){
 
 // ---------- Math helpers ----------
 // Returns unit-equivalent purchased quantity (servings for gallon items, cans for can items)
+// How many ounces (fluid or weight, whichever the item is measured in) are in ONE purchase unit.
+// Generalized for Fellow: this used to be a hardcoded 128 behind `item.unit === 'gallon'`, which
+// could only express gallon jugs. Fellow reconciles espresso and loose tea by the pound, drip
+// coffee and iced tea by the case, milk by the quart and syrup by the litre — none of which are
+// 128 oz, and unlike Central Phoenix those are not order-only here. A gallon item with no explicit
+// unitOz still resolves to 128, so nothing that worked before changes.
+function unitOz(item){
+  const v = parseFloat(item.unitOz);
+  if(isFinite(v) && v > 0) return v;
+  return item.unit === 'gallon' ? 128 : null;
+}
+// "Bulk" = counted in a container (jug, bag, case, bottle) but sold in portions out of it. Needs
+// both a container size and a portion size; without either it is a straight each-count item.
+function isBulk(item){
+  const u = unitOz(item);
+  return !!(u && parseFloat(item.pourOz) > 0);
+}
+function servingsPerUnit(item){ return isBulk(item) ? unitOz(item) / parseFloat(item.pourOz) : 1; }
+// What one purchase unit is called on screen: gal / lb / case / qt / btl.
+function nativeLabel(item){ return item.unitLabel || (item.unit === 'gallon' ? 'gal' : 'unit'); }
+
 function purchasedServings(item, purchasedRaw){
-  if(item.unit === 'gallon'){
-    return (purchasedRaw * 128) / (item.pourOz || 1);
+  if(isBulk(item)){
+    return purchasedRaw * servingsPerUnit(item);
   }
   return purchasedRaw;
 }
@@ -424,15 +479,14 @@ function purchasedServings(item, purchasedRaw){
 // output) needs to be stored back into a native-unit field like beginInv or Count, which always
 // get re-converted via purchasedServings() when read.
 function servingsToNative(item, servings){
-  if(item.unit === 'gallon'){
-    return (servings * (item.pourOz || 1)) / 128;
+  if(isBulk(item)){
+    return servings / servingsPerUnit(item);
   }
   return servings;
 }
 function costPerServing(item){
-  if(item.unit === 'gallon'){
-    const servingsPerGal = 128 / (item.pourOz || 1);
-    return item.cost / servingsPerGal;
+  if(isBulk(item)){
+    return item.cost / servingsPerUnit(item);
   }
   return item.cost;
 }
@@ -457,26 +511,43 @@ function computeRow(item, weekData, carryIn){
   // noise fed straight into Accounted For and made it look like the app could report "25.1 Dr
   // Peppers accounted for" — physically meaningless, and Nick caught it immediately.
   const comped = item.price > 0 ? Math.round(discount / item.price) : 0;
-  // Corrected 2026-09-08: a fully-comped ($0) item does NOT get counted in Toast's "Qty sold" for
-  // this account's export — only paid (even if partially discounted) transactions land there. So
-  // comped units have to be added back in explicitly, or they silently vanish from the reconciliation
-  // (Nick caught this live on Coke: 48 purchased, 36 sold, 24 comped should account for 60 units, not
-  // 36 — the old formula was undercounting by exactly the comped amount every week, in every period).
-  const accountedFor = sold + comped + kitchen;
+  // Reverted 2026-09-13 — the 2026-09-08 "fix" below was wrong and had it backwards. Verified
+  // against a real Diet Coke row (Qty sold 52, Gross $234.00 = 52 × $4.50): Gross is definitionally
+  // Qty Sold × Price, so if the 24 comped units (Discount $108 ÷ $4.50) were excluded from "Qty
+  // sold," Gross would have been built from 28 units ($126), not 52 ($234). It wasn't — so Toast's
+  // "Qty sold" already includes comped transactions (a comp is a 100%-discounted sale, not a void;
+  // it still counts as sold, just at $0 revenue). `comped` is still useful as a breakdown of how
+  // much of `sold` was comped (staff perk rate, "show the math"), but it must NOT be added again on
+  // top of `sold` here — doing so double-counted every comp, inflating Accounted For and making
+  // every period's unaccounted number look smaller than it really was. This is back to the original
+  // pre-2026-09-08 formula; that "fix" is the thing that was actually broken.
+  const accountedFor = sold + kitchen;
+  // Sold to guests / guest revenue: the profit-vs-perk breakdown Nick asked for — how much of
+  // Sold was actually paid for by a guest (real revenue) vs. comped (staff perk, zero revenue).
+  // Not clamped at 0 on purpose: if this goes negative, it means the comped estimate (discount ÷
+  // price, rounded) came out larger than Sold itself, which is a real data problem worth seeing —
+  // hiding it behind a floor of 0 would bury the exact kind of mismatch this app exists to surface.
+  const soldToGuests = sold - comped;
+  const guestRevenue = soldToGuests * item.price;
   const available = carryIn + purchU; // what could have been sold this week: prior stock + new purchases
   const unaccounted = available - accountedFor; // allow negative to show over-accounted
   const cps = costPerServing(item);
   const unaccountedCost = unaccounted * cps;
-  // % accounted and the flag stay anchored to this week's Purchased alone (not carryIn) — that's
-  // the "is what we bought this week showing up as sold" check, and it already special-cases
-  // purchU===0 as 100%/green rather than treating a no-purchase week as a red flag. carryIn only
-  // changes the raw Unaccounted number/cost above, so a fully-stocked item with no purchase this
-  // week shows an honest surplus instead of a scary negative, without changing how the flag reads.
-  const pctAccounted = purchU > 0 ? (accountedFor / purchU) * 100 : (accountedFor>0 ? 100 : 0);
-  let flag = 'green';
-  if(pctAccounted < 70) flag = 'red';
-  else if(pctAccounted < 85) flag = 'yellow';
-  return { purchased, purchU, sold, discount, comped, kitchen, accountedFor, unaccounted, unaccountedCost, pctAccounted, flag, cps,
+  // Profit: real bottom-line profit on what actually sold to a guest — revenue minus the cost of
+  // goods for those units. Uses cps (cost per serving), not item.cost directly, so gallon items
+  // (Lemonade) profit correctly per drink poured rather than per gallon jug.
+  const profit = soldToGuests * (item.price - cps);
+  // Comp cost: what comping actually cost in wholesale terms, as opposed to Comped $ (the menu-
+  // price value given away). Not a visible column — shown in the "show the math" breakdown
+  // instead, so Profit doesn't need a second column next to it just to explain the perk's cost.
+  const compCost = comped * cps;
+  // Removed 2026-09-13: this week's Purchased-vs-Accounted ratio ("% of purchases") and its
+  // OK/WATCH/FLAG badge used to live here. Nick flagged the name as confusing and, on reflection,
+  // the metric itself was redundant with Expected on hand/Expected on hand ($) + the "⚠ Check fridge" badge —
+  // running two separate alert signals off overlapping data was more for Gary to parse, not less.
+  // Check fridge (driven by unaccountedAlertThreshold, computed in renderStoreView) is now the only
+  // alert in the app.
+  return { purchased, purchU, sold, discount, comped, soldToGuests, guestRevenue, profit, compCost, kitchen, accountedFor, unaccounted, unaccountedCost, cps,
            actualCount: d.actualCount, notes: d.notes || '' };
 }
 
@@ -560,18 +631,6 @@ function lastOrder(store, uptoPeriodIdx, uptoWeekIdx, item){
     if(pIdx>=0) wIdx = store.periods[pIdx].weeks.length-1;
   }
   return null;
-}
-
-function sustainedRed(period, itemId, uptoWeekIdx){
-  // true if this week AND the previous week are both red
-  if(uptoWeekIdx < 1) return false;
-  const store = getActiveStore();
-  const item = store.items.find(i=>i.id===itemId);
-  // Uses the same carry-in-aware flag as the on-screen row (see computeRow), so this badge never
-  // disagrees with what the Flag column itself is showing for those two weeks.
-  const r0 = computeRow(item, period.weeks[uptoWeekIdx], balanceEnteringWeek(store, period, item, uptoWeekIdx));
-  const r1 = computeRow(item, period.weeks[uptoWeekIdx-1], balanceEnteringWeek(store, period, item, uptoWeekIdx-1));
-  return r0.flag==='red' && r1.flag==='red';
 }
 
 function fmt$(n){ return '$' + (Math.round(n*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -943,7 +1002,7 @@ function renderStoreView(app){
   // showing them here would imply they're tracked when they're not.
   store.items.filter(it=>!it.orderOnly).forEach(it=>{
     const f = document.createElement('div'); f.className='settings-field';
-    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    f.innerHTML = `<label>${it.name} (${isBulk(it) ? nativeLabel(it) : 'units'})</label>`;
     const inp = document.createElement('input'); inp.type='text'; inp.value = period.beginInv[it.id] ?? '';
     inp.oninput = (e)=>{ period.beginInv[it.id] = e.target.value; save(); };
     f.appendChild(inp);
@@ -966,7 +1025,7 @@ function renderStoreView(app){
   const lastWeekData = period.weeks[3];
   store.items.filter(it=>!it.orderOnly).forEach(it=>{
     const f = document.createElement('div'); f.className='settings-field';
-    f.innerHTML = `<label>${it.name} (${it.unit==='gallon'?'gal':'units'})</label>`;
+    f.innerHTML = `<label>${it.name} (${isBulk(it) ? nativeLabel(it) : 'units'})</label>`;
     const inp = document.createElement('input'); inp.type='text'; inp.value = lastWeekData[it.id].actualCount ?? '';
     inp.addEventListener('change', (e)=>{ lastWeekData[it.id].actualCount = e.target.value; save(); render(); });
     f.appendChild(inp);
@@ -1035,19 +1094,20 @@ function renderStoreView(app){
     </tr>
     <tr>
       <th>Purchased</th>
-      <th title="Guest-paid units only, across every sales channel — does not include fully comped (free) items. Those are tracked separately in Comped and added back into Accounted For automatically.">Sold (paid)‡</th>
-      <th>Discount $</th>
-      <th>Comped*</th>
-      <th title="Sold (paid) + Comped — every unit that left the building through any channel, whether it was paid for or comped. (Kitchen use dropped as a visible column since nothing currently routes to it — see CHANGELOG.)">Accounted for</th>
-      <th title="This week's Accounted for ÷ this week's Purchased. Doesn't include stock carried over from prior weeks — a week with 0 Purchased and some Sold still shows 100%, since there was nothing new to reconcile. Shown as 100%+ when more got sold than was purchased this week — not an error, just means some of what sold came from stock bought before this week.">% of purchases†</th>
-      <th>Flag</th>
-      <th>Unaccounted</th>
-      <th>Unacct. cost</th>
+      <th title="Raw Toast 'Qty sold' for this item — every unit that left the building, paid or comped. This is the CSV import target; see Sold to guests for the paid-only breakdown.">Sold‡</th>
+      <th title="Sold minus Comped — units actually paid for by a guest. This is what generated real revenue.">Sold to guests</th>
+      <th title="Revenue actually collected from guests: Sold to guests × price. Equivalent to Toast's Net item amount.">$</th>
+      <th title="Estimated from Comped $ ÷ price, rounded to a whole item. This is a breakdown of Sold — how many of that Sold count were comped — not an additional quantity on top of it.">Comped*</th>
+      <th title="The staff-comp perk dollar value, at menu price — same figure as Toast's Discount $ for this item. Locked to CSV import only, not manually editable, so this always matches Toast exactly.">Comped $</th>
+      <th title="Sold to guests × (price − cost). Real bottom-line profit on what actually sold — comped units cost money too, but that cost isn't charged against this number; see 'show the math' on Expected on hand for the comp's actual cost.">Profit</th>
+      <th title="Beginning inventory + purchased since period start, minus Accounted for — this is what should currently be sitting in the fridge/cooler if nothing's gone wrong. It's a projection based on your records, not a confirmed count. A quick Monday glance in the fridge is the real check; it only becomes solid once you log an actual period-end count.">Expected on hand</th>
+      <th title="Cost value of Expected on hand — a working number to track trend week to week, not a confirmed loss. Treat it as a placeholder until a physical count confirms it.">Expected on hand ($)</th>
     </tr>
   </thead>`;
   const tbody = document.createElement('tbody');
 
-  let totUnacctCost=0, totPurchU=0, totAccounted=0, totUnacctUnits=0;
+  let totUnacctCost=0, totPurchU=0, totUnacctUnits=0;
+  let totSoldToGuests=0, totGuestRevenue=0, totComped=0, totDiscount=0, totProfit=0;
 
   // Order-only items (coffee/tea via Passport) have no sales data and aren't part of NA Bev
   // variance reconciliation — they only appear in the Order Guide.
@@ -1056,19 +1116,17 @@ function renderStoreView(app){
     const r = computeRow(item, weekData, carryIn);
     totUnacctCost += r.unaccountedCost;
     totPurchU += r.purchU;
-    totAccounted += r.accountedFor;
     totUnacctUnits += r.unaccounted;
+    totSoldToGuests += r.soldToGuests;
+    totGuestRevenue += r.guestRevenue;
+    totProfit += r.profit;
+    totComped += r.comped;
+    totDiscount += r.discount;
 
     const tr = document.createElement('tr');
-    const sustained = sustainedRed(period, item.id, weekIdx);
-    // Independent of r.flag on purpose — see the threshold's comment in defaultState(). r.flag
-    // only ever looks at this week's purchased-vs-sold ratio; this looks at the actual size of
-    // the unaccounted pile (in dollars, so it's comparable across items of very different volume/
-    // cost), regardless of what this week's ratio says. A week can be green on flow and still
-    // trip this if there's a large real surplus sitting unaccounted. Attached to the Unacct. cost
-    // cell (the Running total group) rather than next to the Flag badge (the This week group) —
-    // putting "OK" and "⚠ LARGE" side by side in the same cell read as a contradiction, when
-    // they're actually answering two different questions about two different time windows.
+    // See the threshold's comment in defaultState() — this looks at the actual size of the
+    // unaccounted pile (in dollars, so it's comparable across items of very different volume/
+    // cost), independent of this week's purchased-vs-sold flow.
     const threshold = state.unaccountedAlertThreshold ?? 50;
     const isLargeUnaccounted = Math.abs(r.unaccountedCost) >= threshold;
     // Gallon-tracked items (Lemonade) show every number in this row as servings-equivalent — every
@@ -1078,10 +1136,10 @@ function renderStoreView(app){
     // which overflowed the table sideways — this version is short on purpose) and Nick read a 141.7
     // unaccounted as "142 ounces," off by 100x+ from the real figure. Now "sv" is on the number
     // itself, with the gallon-equivalent underneath for checking against an actual jug count.
-    const unitNote = item.unit==='gallon' ? `servings (${item.pourOz}oz pour)` : '';
-    const unitSuffix = item.unit==='gallon' ? ' sv' : '';
-    const unaccountedLabel = item.unit==='gallon'
-      ? `${fmtN(r.unaccounted)} sv<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, r.unaccounted))} gal</div>`
+    const unitNote = isBulk(item) ? `servings (${item.pourOz}oz pour)` : '';
+    const unitSuffix = isBulk(item) ? ' sv' : '';
+    const unaccountedLabel = isBulk(item)
+      ? `${fmtN(r.unaccounted)} sv<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, r.unaccounted))} ${nativeLabel(item)}</div>`
       : fmtN(r.unaccounted);
     // "Show the math" toggle — the whole point is Gary shouldn't have to reconstruct this
     // arithmetic by hand to trust the number (which is exactly what tripped Nick up on Coke and
@@ -1100,26 +1158,28 @@ function renderStoreView(app){
       item.unit === 'gallon' ? `
       <div class="info-note" style="margin-top:6px; text-align:left; max-width:220px; white-space:normal">
         Available: ${fmtN(servingsToNative(item, carryIn))} jugs carried in + ${fmtN(r.purchased)} jugs bought = ${fmtN(servingsToNative(item, carryIn + r.purchU))} jugs<br>
-        − Poured out: ${fmtN(r.sold)} sold + ${fmtN(r.comped)} comped = ${fmtN(r.accountedFor)} lemonades (≈${fmtN(servingsToNative(item, r.accountedFor))} jugs)<br>
-        = <strong>${fmtN(servingsToNative(item, r.unaccounted))} jugs unaccounted</strong>
+        − Poured out: ${fmtN(r.sold)} lemonades sold (${fmtN(r.comped)} of those were comped, already included) = ${fmtN(r.accountedFor)} lemonades (≈${fmtN(servingsToNative(item, r.accountedFor))} jugs)<br>
+        = <strong>${fmtN(servingsToNative(item, r.unaccounted))} jugs expected on hand</strong><br>
+        Comping those ${fmtN(r.comped)} cost ${fmt$(r.compCost)} in actual product cost (separate from Comped $, which is the menu-price value given away).
       </div>` : `
       <div class="info-note" style="margin-top:6px; text-align:left; max-width:220px; white-space:normal">
         Available: ${fmtN(carryIn)} carried in + ${fmtN(r.purchU)} bought = ${fmtN(carryIn + r.purchU)}${unitSuffix}<br>
-        − Accounted for: ${fmtN(r.sold)} sold + ${fmtN(r.comped)} comped${r.kitchen ? ' + '+fmtN(r.kitchen)+' kitchen' : ''} = ${fmtN(r.accountedFor)}${unitSuffix}<br>
-        = <strong>${fmtN(r.unaccounted)}${unitSuffix} unaccounted</strong>
+        − Accounted for: ${fmtN(r.sold)} sold (${fmtN(r.comped)} of those comped, already included)${r.kitchen ? ' + '+fmtN(r.kitchen)+' kitchen' : ''} = ${fmtN(r.accountedFor)}${unitSuffix}<br>
+        = <strong>${fmtN(r.unaccounted)}${unitSuffix} expected on hand</strong><br>
+        Comping those ${fmtN(r.comped)} cost ${fmt$(r.compCost)} in actual product cost (separate from Comped $, which is the menu-price value given away).
       </div>`
     ) : '';
     tr.innerHTML = `
       <td class="left"><strong>${item.name}</strong><div class="info-note" style="margin:0">${unitNote}</div></td>
       <td><input type="text" data-f="purchased" value="${weekData[item.id].purchased}"></td>
       <td><input type="text" data-f="sold" value="${weekData[item.id].sold}"></td>
-      <td><input type="text" data-f="discount" value="${weekData[item.id].discount}"></td>
+      <td>${fmtN(r.soldToGuests)}</td>
+      <td>${fmt$(r.guestRevenue)}</td>
       <td>${fmtN(r.comped)}</td>
-      <td>${fmtN(r.accountedFor)}</td>
-      <td title="${r.pctAccounted.toFixed(0)}% exactly (${fmtN(r.accountedFor)} accounted for ÷ ${fmtN(r.purchU)} purchased this week)${(r.purchU>0 && r.accountedFor>r.purchU)?' — sold more than was purchased this week, using stock from before':''}">${(r.purchU>0 && r.accountedFor>r.purchU) ? '100%+' : r.pctAccounted.toFixed(0)+'%'}</td>
-      <td><span class="flag ${r.flag}">${r.flag==='green'?'OK':r.flag==='yellow'?'WATCH':'FLAG'}</span>${sustained?'<span class="sustained">2+ wks</span>':''}</td>
+      <td title="Locked to CSV import — not manually editable, so this always matches Toast exactly.">${fmt$(r.discount)}</td>
+      <td style="color:${r.profit<0?'var(--red)':'var(--ink)'}">${fmt$(r.profit)}</td>
       <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${unaccountedLabel} <button type="button" class="info-toggle" data-breakdown-key="${breakdownKey}" title="Show the math behind this number">${isExpanded?'▲':'ⓘ'}</button>${breakdown}</td>
-      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(r.unaccountedCost)}${isLargeUnaccounted?`<span class="flag alert-large" title="Running total unaccounted cost ${fmt$(r.unaccountedCost)} is at or above your $${threshold} alert threshold — this is the accumulated pile since period start, separate from This Week's Flag">⚠ Large</span>`:''}</td>
+      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(r.unaccountedCost)}${isLargeUnaccounted?`<span class="flag alert-large" title="Expected on hand's dollar value (${fmt$(r.unaccountedCost)}) is at or above your $${threshold} alert threshold — worth an actual glance in the fridge to see if this matches reality">⚠ Check fridge</span>`:''}</td>
       <td><input type="text" data-f="actualCount" value="${weekData[item.id].actualCount}" placeholder="—"></td>
       <td class="left"><textarea class="note" data-f="notes">${weekData[item.id].notes}</textarea></td>
     `;
@@ -1132,7 +1192,7 @@ function renderStoreView(app){
     });
 
     // 'change' (fires on blur/Enter), not 'input' (fires per keystroke) — this table's handler
-    // re-renders the whole page to recompute Accounted for/Unaccounted/Flag/Total, and doing that
+    // re-renders the whole page to recompute Accounted for/Unaccounted/Total, and doing that
     // on every keystroke destroys and rebuilds the very input you're mid-typing into, silently
     // dropping every character after the first (typing "49" only ever saved "4"). 'change' commits
     // once you leave the field, so the browser's native text input handles the typing untouched.
@@ -1145,13 +1205,13 @@ function renderStoreView(app){
     });
   });
 
-  // total row — column order matches the header: Item, Purchased, [Sold/Discount/Comped
-  // skipped], Accounted for, % of purchases, Flag, Unaccounted, Unacct. cost, [Count/Notes skipped]
-  const pctTot = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
-  const pctTotDisplay = (totPurchU>0 && totAccounted>totPurchU) ? '100%+' : pctTot.toFixed(0)+'%';
+  // total row — column order matches the header: Item, Purchased, [Sold skipped], Sold to guests,
+  // $ (guest revenue), Comped, Comped $, Profit, Expected on hand, Expected on hand ($), [Count/Notes skipped].
+  // totAccounted is still computed above (needed for Expected on hand) even though it's no longer
+  // shown as its own column.
   const trTot = document.createElement('tr');
   trTot.className='total-row';
-  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td colspan="3"></td><td>${fmtN(totAccounted)}</td><td title="${pctTot.toFixed(0)}% exactly">${pctTotDisplay}</td><td></td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
+  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td></td><td>${fmtN(totSoldToGuests)}</td><td>${fmt$(totGuestRevenue)}</td><td>${fmtN(totComped)}</td><td>${fmt$(totDiscount)}</td><td>${fmt$(totProfit)}</td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
   tbody.appendChild(trTot);
 
   table.appendChild(tbody);
@@ -1160,7 +1220,7 @@ function renderStoreView(app){
   // child of wcard (including the week tab buttons wired up above), which silently destroys the
   // click handlers wireClick just attached to them. This was the actual cause of week-switching
   // not working — not a browser quirk, a bug in this line.
-  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = discount $ ÷ price, rounded to a whole item — added into "Accounted for" on top of "Sold." ‡"Sold (paid)" is guest-paid units only; a fully comped item doesn't ring as a sale, so it wouldn't otherwise show up as accounted for at all. †"This week" columns (including % of purchases and Flag) only look at what happened this week — this week's Purchased vs. this week's Accounted for — and ignore stock left over from prior weeks, so a slow week with 0 Purchased still shows 100%/green instead of a false alarm. "Running total" columns (Unaccounted, Unacct. cost) are the opposite: the full accumulated pile, including everything carried over since the period started. The two can disagree on purpose — a green Flag with a "⚠ Large" badge means this week's buying-and-selling looks fine, but there's still a real backlog of product sitting unaccounted for overall. Period Summary and the email export total each week's own This-Week flow, not this running balance. "Count" lets you log an actual physical cooler count for this week; entering it resets the running total used for next week's check.</div>`);
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = Comped $ ÷ price, rounded to a whole item — this is a breakdown of how many of "Sold" were comped, not an extra quantity added on top. "Sold to guests" and its "$" are Sold minus Comped and that revenue — the actual profit-generating half of Sold, separate from the staff-perk half. ‡"Sold" is every unit that left the building, paid or comped — Toast counts a 100%-discounted comp as a sale (at $0 revenue), it only excludes voided items, which don't appear here at all. "This week" columns are just this week's facts — what was purchased, sold, comped, and profited this week, nothing carried over. "Expected on hand" and "Expected on hand ($)" are different: the full running total since the period started — what your records say should currently be sitting in the fridge, and its cost. This is a projection from purchase/sales records, not a confirmed count — nobody's walked over and checked it yet. Use it as a working tool: log sales and purchasing weekly like normal, then take a Monday glance in the fridge and compare it to "Expected on hand." The two can disagree on purpose — this week's numbers can look completely normal while the running total is still worth eyeballing against reality. The number only becomes solid once you log an actual count — "Count" here resets the running total for this week's check, and a full period-end count (Ending on-hand, carried into the next period's Beginning on-hand) is what actually confirms or clears it. Period Summary and the email export total each week's own This-Week flow, not this running balance.</div>`);
   app.appendChild(wcard);
 
   function renderStoreViewInPlace(){
@@ -1177,69 +1237,90 @@ function renderPeriodSummary(app, store, period){
   card.innerHTML = `<div class="rowflex"><h2>Period Summary — ${period.name}</h2>
     <button class="btn secondary small" id="copyEmailBtn">📋 Copy Email</button></div>`;
 
-  let totUnacctCost=0, totUnacctUnits=0, totRetail=0, totPurchU=0, totAccounted=0, totAvail=0;
-  // Comp vs. revenue split: `comped` and `sold` here are the same fields computeRow already
-  // derives (comped = discount$ / price). Corrected 2026-09-08 alongside the accountedFor fix:
-  // `sold` is guest-PAID units only — a fully comped item doesn't ring as a sale in this account's
-  // Toast export, so it's never in `sold` to begin with. Total units that left the building is
-  // sold + comped, and that combined total is the right denominator/base for both rates below, not
-  // sold alone (which would understate comp rate and overstate revenue realized). Deliberately two
-  // separate percentages, not one — comp rate (units) and revenue realized (dollars) diverge on
-  // purpose, since a comped unit is a full unit but zero revenue. See CHANGELOG for the Nick/Gary
-  // discussion this came out of.
-  let totSold=0, totComp=0, totDisc=0, totGrossPotential=0, totUnitsAll=0;
+  let totPurchU=0, totAccounted=0, totProfit=0, totComp=0, totDisc=0;
+  let totMissingCost=0, confirmedCount=0;
   const perItem = store.items.filter(it=>!it.orderOnly).map(item=>{
-    let pu=0, ac=0, ua=0, uc=0, av=0, soldSum=0, compSum=0, discSum=0;
+    let pu=0, ac=0, compSum=0, discSum=0, profitSum=0;
+    // Purchased/Accounted/Comped/Discount/Profit are each real, distinct events every week (a
+    // sale, a purchase, a comp), so summing them across the period's 4 weeks is legitimate — that's
+    // just "how much happened this period." Fixed 2026-09-09: carryIn is threaded through so
+    // Accounted is measured against carried-in stock + purchases, not purchases alone (see
+    // balanceEnteringWeek).
     period.weeks.forEach((w, weekIdx)=>{
-      // Fixed 2026-09-09: this used to call computeRow(item, w) with no carryIn, which silently
-      // defaults to 0 (see computeRow's signature). That's fine week-to-week in the Variance table,
-      // which passes carryIn explicitly — but here it meant Period Summary only ever compared
-      // "purchased this period" against "sold+comped this period" and ignored beginning inventory
-      // entirely. The moment a period opens with a real beginning-inventory count (as Period 9 did),
-      // sold+comped legitimately exceeds purchased-this-period, and Unaccounted swung negative while
-      // % accounted read >100% and green — even though, once beginning inventory is counted as
-      // available stock, the period was actually only ~58% accounted for. carryIn now comes from the
-      // same balanceEnteringWeek() the Variance table already trusts, so "available" here means the
-      // same thing it means everywhere else in the app: carried-in stock + what was purchased.
       const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
       const r = computeRow(item, w, carryIn);
-      pu+=r.purchU; ac+=r.accountedFor; ua+=r.unaccounted; uc+=r.unaccountedCost; av+=carryIn+r.purchU;
-      soldSum+=r.sold; compSum+=r.comped; discSum+=r.discount;
+      pu+=r.purchU; ac+=r.accountedFor; compSum+=r.comped; discSum+=r.discount; profitSum+=r.profit;
     });
-    totUnacctCost+=uc; totUnacctUnits+=ua; totPurchU+=pu; totAccounted+=ac; totAvail+=av;
-    totRetail += Math.max(ua,0)*item.price;
-    const totalUnits = soldSum + compSum;
-    const grossPotential = totalUnits * item.price;
-    totSold+=soldSum; totComp+=compSum; totDisc+=discSum; totGrossPotential+=grossPotential; totUnitsAll+=totalUnits;
-    const compRatePct = totalUnits>0 ? (compSum/totalUnits*100) : 0;
-    const revenueRealizedPct = grossPotential>0 ? ((grossPotential-discSum)/grossPotential*100) : 0;
-    return {item, pu, ac, ua, uc, av, totalUnits, compSum, discSum, compRatePct, revenueRealizedPct};
+    // Product missing is NOT the same kind of number as the above — it's a running stock balance,
+    // not a per-week event, so summing it across weeks double/triple/quadruple-counts the same
+    // lingering product every week it sits there unsold and unpurchased. Fixed 2026-09-13: reuse
+    // expectedOnHand() — the same running-balance primitive the weekly Variance table already
+    // trusts — evaluated once at the period's last week, i.e. where things actually stand right
+    // now, not summed across every week it was checked. This was the real explanation behind a
+    // "Margin never captured" figure Nick correctly called out as way too high.
+    const missingUnits = expectedOnHand(store, period, item, period.weeks.length-1);
+    const missingCost = missingUnits * costPerServing(item);
+    // Confirmed vs. projected, added 2026-09-14: weeks 1-3 never get a physical count by design
+    // (that's the whole "Monday glance, not mandatory weekly counts" workflow) — Week 4 is where
+    // the real period-end count lands, per item, whenever Gary/Nick actually counts it. If this
+    // item has a Week 4 Count entered, expectedOnHand() already resets to that real number
+    // internally (see its own logic) — this just makes that fact visible instead of showing every
+    // item's missing figure identically, confirmed or not. An item without a Week 4 count is still
+    // a pure projection, same as it always was.
+    const week4Data = period.weeks[period.weeks.length-1][item.id];
+    const confirmed = !!(week4Data && week4Data.actualCount !== '' && week4Data.actualCount !== undefined && !isNaN(parseFloat(week4Data.actualCount)));
+    if(confirmed) confirmedCount++;
+    totPurchU+=pu; totAccounted+=ac; totComp+=compSum; totDisc+=discSum; totProfit+=profitSum;
+    totMissingCost+=missingCost;
+    return {item, pu, ac, compSum, discSum, profitSum, missingUnits, missingCost, confirmed};
   });
-  const margin = totRetail - Math.max(totUnacctCost,0);
-  const totCompRatePct = totUnitsAll>0 ? (totComp/totUnitsAll*100) : 0;
-  const totRevenueRealizedPct = totGrossPotential>0 ? ((totGrossPotential-totDisc)/totGrossPotential*100) : 0;
+  const totalTrackedItems = perItem.length;
+  let confirmStatus;
+  if(confirmedCount===0){
+    confirmStatus = `No items have a Week 4 count logged yet — every number here is still a projection, not confirmed.`;
+  } else if(confirmedCount===totalTrackedItems){
+    confirmStatus = `All ${totalTrackedItems} items have a Week 4 count logged — these numbers are confirmed, not projected.`;
+  } else {
+    confirmStatus = `${confirmedCount} of ${totalTrackedItems} item${totalTrackedItems===1?'':'s'} ha${confirmedCount===1?'s':'ve'} a Week 4 count logged so far (marked ✓ below) — those are confirmed, the rest are still projections.`;
+  }
 
+  // Rebuilt 2026-09-13 around what Nick actually uses this for: overall profit, how much product
+  // is going out as a staff comp (in both units and $, not a rate — easier to read at a glance),
+  // and how much product can't be explained by either a sale or a comp. Dropped "Retail value if
+  // sold" / "Margin never captured" (multiplied an already-uncertain missing-product estimate by
+  // full menu price, compounding one soft number into a scarier one) and the "% accounted" / comp-
+  // rate / revenue-realized percentages (Comped units/$ and Profit answer the same questions more
+  // directly, in dollars and units instead of rates).
+  // Dropped the blended "Product missing (units)" KPI 2026-09-13: it summed units across items
+  // that don't share a unit (cans/bottles for most items, gallon-equivalent servings for
+  // Lemonade), so a single number like "222" couldn't honestly mean anything — Nick correctly
+  // called this out as unlabeled and confusing. Product missing ($) is the safe headline instead,
+  // since dollars are the one thing every item's missing quantity can be added into meaningfully.
+  // Per-item unit counts still live in the table below, where the item name makes the unit obvious.
   const kpis = document.createElement('div');
   kpis.className='kpi-grid';
   kpis.innerHTML = `
-    <div class="kpi"><div class="label">Unaccounted units</div><div class="value red">${fmtN(totUnacctUnits)}</div></div>
-    <div class="kpi"><div class="label">Unaccounted cost</div><div class="value red">${fmt$(totUnacctCost)}</div></div>
-    <div class="kpi"><div class="label">Retail value if sold</div><div class="value">${fmt$(totRetail)}</div></div>
-    <div class="kpi"><div class="label">Margin never captured</div><div class="value red">${fmt$(margin)}</div></div>
-    <div class="kpi"><div class="label">% accounted, period</div><div class="value ${totAvail>0 && totAccounted/totAvail>=0.85 ? 'green':''}" title="Accounted for ÷ (beginning inventory + purchased this period) — includes stock carried in, not purchases alone.">${totAvail>0?((totAccounted/totAvail)*100).toFixed(0):'—'}%</div></div>
-    <div class="kpi" title="Staff comp perk units ÷ (paid units + comped units), all channels. Comp $ backed out from discount $ ÷ menu price."><div class="label">Staff comp rate</div><div class="value">${totUnitsAll>0?totCompRatePct.toFixed(0):'—'}%</div></div>
-    <div class="kpi" title="What was actually billed vs. what the same units would have billed at full menu price. The gap is the comp perk cost, not lost/unaccounted product."><div class="label">Revenue realized</div><div class="value ${totGrossPotential>0 && totRevenueRealizedPct>=90 ? 'green':''}">${totGrossPotential>0?totRevenueRealizedPct.toFixed(0):'—'}%</div></div>
+    <div class="kpi" title="Total profit on paid sales this period — Sold to guests × (price − cost per serving)."><div class="label">Profit</div><div class="value ${totProfit<0?'red':''}">${fmt$(totProfit)}</div></div>
+    <div class="kpi" title="Staff comp units this period — already part of Accounted for, not additional. What's being given to the team, in units."><div class="label">Comped (units)</div><div class="value">${fmtN(totComp)}</div></div>
+    <div class="kpi" title="Menu-price value of everything comped this period — same figure as Toast's Discount $, totaled. What's being given to the team, in dollars."><div class="label">Comped ($)</div><div class="value">${fmt$(totDisc)}</div></div>
+    <div class="kpi" title="Cost value of Product missing — a projection for most items, confirmed for any item with a Week 4 count logged. Not a sum of every week's snapshot. See the table below for per-item detail and which items are confirmed."><div class="label">Product missing ($)</div><div class="value red">${fmt$(totMissingCost)}</div></div>
   `;
   card.appendChild(kpis);
+  card.insertAdjacentHTML('beforeend', `<div class="info-note" style="margin:8px 0 0">Profit and Comped are real totals — every sale and comp this period, added up. Product missing is different: a projection from purchase/sales records, not a confirmed count — unless an item has a Week 4 count logged, which locks that item's number in as the real ending figure instead of a projection. ${confirmStatus} The item table below shows exact units per item — most are cans/bottles, Lemonade is in servings (see its row).</div>`);
 
+  // Sorted worst-first by dollar impact so "which item, how much" is the first thing visible —
+  // directly answering "how many Cokes are we missing" without scanning the whole item list.
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th>Unaccounted</th><th>% acct.</th><th>Cost</th><th title="Staff comp units ÷ (paid units + comped units) this period">Comp %</th><th title="Billed $ ÷ full-price potential $ this period — the gap is the comp perk, not missing product">Revenue %</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th title="What your records say should currently be in the fridge for this item — a projection, unless a Week 4 count has been logged for it (marked ✓), which makes it the confirmed ending number instead.">Product missing</th><th>Product missing ($)</th><th title="Comped units this period — already part of Accounted, not additional.">Comped</th><th title="Profit on paid sales this period.">Profit</th></tr></thead>`;
   const tb = document.createElement('tbody');
-  perItem.forEach(({item,pu,ac,ua,uc,av,totalUnits,compRatePct,revenueRealizedPct})=>{
-    const pct = av>0 ? (ac/av*100) : 0;
-    const flag = pct<70?'red':pct<85?'yellow':'green';
+  perItem.slice().sort((a,b)=>b.missingCost-a.missingCost).forEach(({item,pu,ac,compSum,missingUnits,missingCost,profitSum,confirmed})=>{
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="left">${item.name}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td>${fmtN(ua)}</td><td><span class="flag ${flag}">${pct.toFixed(0)}%</span></td><td>${fmt$(uc)}</td><td>${totalUnits>0?compRatePct.toFixed(0)+'%':'—'}</td><td>${totalUnits>0?revenueRealizedPct.toFixed(0)+'%':'—'}</td>`;
+    const unitNote = isBulk(item) ? `servings (${item.pourOz}oz pour)` : '';
+    const confirmNote = confirmed ? `<div class="info-note" style="margin:0; color:var(--green)">✓ confirmed by count</div>` : '';
+    const missingLabel = isBulk(item)
+      ? `${fmtN(missingUnits)}<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, missingUnits))} ${nativeLabel(item)}</div>`
+      : fmtN(missingUnits);
+    tr.innerHTML = `<td class="left">${item.name}${unitNote?`<div class="info-note" style="margin:0">${unitNote}</div>`:''}${confirmNote}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td style="color:${missingUnits>0?'var(--red)':'var(--ink)'}">${missingLabel}</td><td style="color:${missingCost>0?'var(--red)':'var(--ink)'}">${fmt$(missingCost)}</td><td>${fmtN(compSum)}</td><td style="color:${profitSum<0?'var(--red)':'var(--ink)'}">${fmt$(profitSum)}</td>`;
     tb.appendChild(tr);
   });
   tbl.appendChild(tb);
@@ -1247,7 +1328,7 @@ function renderPeriodSummary(app, store, period){
   app.appendChild(card);
 
   wireClick(card.querySelector('#copyEmailBtn'), ()=>{
-    const text = generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted);
+    const text = generateEmail(store, period, perItem, totMissingCost, totProfit, totComp, totDisc);
     navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
       const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
       document.execCommand('copy'); document.body.removeChild(ta); showToast('Email copied to clipboard');
@@ -1255,8 +1336,7 @@ function renderPeriodSummary(app, store, period){
   });
 }
 
-function generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, totRetail, margin, totPurchU, totAccounted){
-  const pct = totPurchU>0 ? (totAccounted/totPurchU*100) : 0;
+function generateEmail(store, period, perItem, totMissingCost, totProfit, totComp, totDisc){
   let lines = [];
   lines.push(`Subject: NA Beverage Purchase vs. Sales Variance — ${store.name} (${period.name}${period.startDate ? ', starting '+period.startDate : ''})`);
   lines.push('');
@@ -1264,20 +1344,23 @@ function generateEmail(store, period, perItem, totUnacctCost, totUnacctUnits, to
   lines.push('');
   lines.push(`Purchasing vs. sales on NA Bev for the period, all channels included.`);
   lines.push('');
-  perItem.sort((a,b)=>b.uc-a.uc).forEach(({item,pu,ac,ua,uc})=>{
-    const p = pu>0 ? (ac/pu*100) : 0;
-    lines.push(`${item.name} — Purchased: ${fmtN(pu)} | Accounted for: ${fmtN(ac)} | Unaccounted: ${fmtN(ua)} (${p.toFixed(0)}%) | Cost: ${fmt$(uc)}`);
+  perItem.slice().sort((a,b)=>b.missingCost-a.missingCost).forEach(({item,pu,ac,missingUnits,missingCost,confirmed})=>{
+    const unitLabel = isBulk(item) ? 'servings' : 'units';
+    lines.push(`${item.name} — Purchased: ${fmtN(pu)} | Accounted for: ${fmtN(ac)} | Product missing: ${fmtN(missingUnits)} ${unitLabel} (${fmt$(missingCost)})${confirmed?' [confirmed by count]':' [projection]'}`);
   });
   lines.push('');
-  lines.push(`Total — Unaccounted: ${fmtN(totUnacctUnits)} | Cost: ${fmt$(totUnacctCost)} | ${pct.toFixed(0)}% accounted for overall.`);
+  // Total line intentionally skips a units figure — Product missing sums across items that don't
+  // share a unit (cans/bottles vs. Lemonade's gallon-equivalent servings), so a single blended
+  // count wouldn't mean anything. $ is the one number that's safe to add across different items.
+  lines.push(`Total — Product missing: ${fmt$(totMissingCost)} | Profit: ${fmt$(totProfit)} | Comped: ${fmtN(totComp)} units (${fmt$(totDisc)} at menu price).`);
   lines.push('');
-  lines.push(`"Accounted for" includes every channel and every employee comp — comped units are added on top of paid Sold, since a fully comped item doesn't ring as a sale on its own.`);
+  lines.push(`"Accounted for" is Sold + Kitchen use — Sold already includes every employee comp (Toast counts a comped item as sold at $0, not as a void), so comps aren't missing from this number, they're inside it.`);
   lines.push('');
-  lines.push(`Bottom line: ${fmt$(totUnacctCost)} in product cost with no matching transaction. At menu price that's roughly ${fmt$(totRetail)} in sales, or ${fmt$(margin)} in gross margin never captured.`);
+  lines.push(`"Product missing" is a projection from purchase/sales records as of this period's most recent week, not a confirmed count — it's what should be sitting in the fridge right now if nothing's gone wrong.`);
   lines.push('');
   lines.push(`This isn't about the employee meal comp perk — that stays as is. Just tightening up the numbers.`);
   lines.push('');
-  lines.push('Next: spot-check vendor invoices, then a short physical cooler count on the flagged items.');
+  lines.push('Next: a Monday glance in the fridge against Product missing on the flagged items, plus a real count at period end to confirm.');
   lines.push('');
   lines.push('Nick');
   return lines.join('\n');
@@ -1362,7 +1445,7 @@ function renderOrderGuide(app){
       // in this row now shows the same real, physical unit — the one Gary would write on an actual
       // order (cans, jugs, lbs, cases) — matching what "Purchased" means on the Variance side, so
       // ordering and reconciliation never disagree about what "1" means for a given item.
-      const unitLabel = item.unit==='gallon' ? 'jugs' : item.unit==='lb' ? 'lbs' : item.unit==='case' ? 'cases' : item.unit==='can' ? 'cans' : 'units';
+      const unitLabel = nativeLabel(item) === 'unit' ? 'units' : nativeLabel(item);
       let avgUsage=null, parTarget=null, onHand=null, suggestedNative=null;
       if(!item.orderOnly){
         avgUsage = trailingAvgUsage(store, item, periodIdx, weekIdx);
@@ -1415,7 +1498,7 @@ function renderOrderGuide(app){
 
   const noteCard = document.createElement('div');
   noteCard.className = 'card';
-  noteCard.insertAdjacentHTML('beforeend', `<div class="info-note">Every number in a row — Avg wk usage, Par target, Est. on-hand, Suggested, and the qty you type below — is in the same physical unit (cans, jugs, lbs, or cases, shown on each), the same unit you'd write on an actual order and the same one "Purchased" uses on the Sales vs Purchasing tab. All whole numbers here — you can't buy a fraction of a can or a jug. Suggested specifically rounds up rather than down, so it never quietly recommends ordering short. Ordering in cases instead of individual cans? Convert using the count in the Size column (e.g. "24/cs" = 24 per case). *Avg wk usage = trailing average of Accounted for (Sold + Comped + Kitchen use) over the last up to 4 weeks with real data entered, spanning back across prior periods if needed. Order-only items (no sales data, e.g. Passport coffee/tea) always show "—" here — nothing to base a suggestion on. †Est. on-hand = beginning inventory rolled forward through purchased-vs-accounted flow (same running balance as the Variance view), as of whatever's been imported/entered so far this week. Suggested = Par target (avg usage × per-item multiplier, set in Settings) − Est. on-hand, floored at zero — a whole-week guide, not split per order window. Log actual order qty/date per window below; it becomes "Last order" the next time you view this item.</div>`);
+  noteCard.insertAdjacentHTML('beforeend', `<div class="info-note">Every number in a row — Avg wk usage, Par target, Est. on-hand, Suggested, and the qty you type below — is in the same physical unit (cans, jugs, lbs, or cases, shown on each), the same unit you'd write on an actual order and the same one "Purchased" uses on the Sales vs Purchasing tab. All whole numbers here — you can't buy a fraction of a can or a jug. Suggested specifically rounds up rather than down, so it never quietly recommends ordering short. Ordering in cases instead of individual cans? Convert using the count in the Size column (e.g. "24/cs" = 24 per case). *Avg wk usage = trailing average of Accounted for (Sold + Kitchen use — Sold already includes comps) over the last up to 4 weeks with real data entered, spanning back across prior periods if needed. Order-only items (no sales data, e.g. Passport coffee/tea) always show "—" here — nothing to base a suggestion on. †Est. on-hand = beginning inventory rolled forward through purchased-vs-accounted flow (same running balance as the Variance view), as of whatever's been imported/entered so far this week. Suggested = Par target (avg usage × per-item multiplier, set in Settings) − Est. on-hand, floored at zero — a whole-week guide, not split per order window. Log actual order qty/date per window below; it becomes "Last order" the next time you view this item.</div>`);
   app.appendChild(noteCard);
 }
 
@@ -1435,7 +1518,7 @@ function renderCompare(app){
   const rows = [];
   if(store.items.length>0){
     store.periods.forEach(period=>{
-      let totPurchU=0, totAccounted=0, totUnacctCost=0, totAvail=0;
+      let totPurchU=0, totAccounted=0, totAvail=0, totMissingCost=0;
       let worst = null;
       store.items.filter(it=>!it.orderOnly).forEach(item=>{
         // Fixed 2026-09-09: same carryIn bug as Period Summary — computeRow(item,w) with no third
@@ -1443,18 +1526,23 @@ function renderCompare(app){
         // beginning-inventory (like P9) showed accounted-for outrunning purchased and swung
         // negative/>100%. Now uses balanceEnteringWeek() like the Variance table, and "% accounted"
         // is measured against available (carryIn + purchased), not purchased alone.
-        let pu=0, ac=0, uc=0, av=0;
+        let pu=0, ac=0, av=0;
         period.weeks.forEach((w, weekIdx)=>{
           const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
           const r = computeRow(item, w, carryIn);
-          pu+=r.purchU; ac+=r.accountedFor; uc+=r.unaccountedCost; av+=carryIn+r.purchU;
+          pu+=r.purchU; ac+=r.accountedFor; av+=carryIn+r.purchU;
         });
-        totPurchU+=pu; totAccounted+=ac; totUnacctCost+=uc; totAvail+=av;
+        // Fixed 2026-09-13: Product missing ($) is a running stock balance, not a per-week event —
+        // summing it across weeks (the old `uc += r.unaccountedCost` here) double/triple-counted
+        // the same lingering product every week it sat unsold. Same fix as Period Summary: reuse
+        // expectedOnHand() evaluated once at the period's last week, not summed across all 4.
+        const missingCost = expectedOnHand(store, period, item, period.weeks.length-1) * costPerServing(item);
+        totPurchU+=pu; totAccounted+=ac; totAvail+=av; totMissingCost+=missingCost;
         const pct = av>0 ? ac/av*100 : 100;
         if(!worst || pct < worst.pct) worst = {name:item.name, pct};
       });
       const pctAcct = totAvail>0 ? (totAccounted/totAvail*100) : null;
-      rows.push({name: period.name, startDate: period.startDate, pctAcct, totUnacctCost, worst});
+      rows.push({name: period.name, startDate: period.startDate, pctAcct, totMissingCost, worst});
     });
   }
 
@@ -1465,14 +1553,14 @@ function renderCompare(app){
   }
 
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th class="left">Period</th><th class="left">Start date</th><th>% accounted</th><th>Unaccounted cost</th><th class="left">Worst item</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th class="left">Period</th><th class="left">Start date</th><th>% accounted</th><th title="Cost value of what's missing as of the period's last week — a working number, confirmed only by an actual count.">Product missing ($)</th><th class="left">Worst item</th></tr></thead>`;
   const tb = document.createElement('tbody');
   rows.forEach(r=>{
     const flag = r.pctAcct===null ? '' : r.pctAcct<70?'red':r.pctAcct<85?'yellow':'green';
     tb.appendChild(Object.assign(document.createElement('tr'), {innerHTML:
       `<td class="left">${r.name}</td><td class="left">${r.startDate||'—'}</td>
        <td>${r.pctAcct===null?'—':'<span class="flag '+flag+'">'+r.pctAcct.toFixed(0)+'%</span>'}</td>
-       <td>${fmt$(r.totUnacctCost)}</td>
+       <td>${fmt$(r.totMissingCost)}</td>
        <td class="left">${r.worst ? r.worst.name+' ('+r.worst.pct.toFixed(0)+'%)' : '—'}</td>`
     }));
   });
@@ -1490,7 +1578,7 @@ function renderCompare(app){
     type:'bar',
     data:{
       labels: rows.map(r=>r.name),
-      datasets:[{ label:'Unaccounted cost ($)', data: rows.map(r=>Math.round(r.totUnacctCost*100)/100),
+      datasets:[{ label:'Product missing ($)', data: rows.map(r=>Math.round(r.totMissingCost*100)/100),
         backgroundColor:'#2dd4bf', borderRadius:6 }]
     },
     options:{
@@ -1526,8 +1614,8 @@ function renderSettings(app){
   const alertCard = document.createElement('div');
   alertCard.className = 'card';
   alertCard.innerHTML = `<h3>Alerts</h3>
-    <div class="info-note" style="margin-bottom:8px">The weekly Flag (OK/WATCH/FLAG) only checks this week's purchased-vs-sold ratio — a large pile of unaccounted product can otherwise sit there indefinitely without tripping it, as long as purchasing keeps roughly pace with sales each week. This is a second, independent check: any week where an item's unaccounted <em>cost</em> is at or above this dollar amount gets a separate "⚠ LARGE" badge, regardless of what the weekly Flag says.</div>
-    <div class="settings-field"><label>Unaccounted $ alert threshold</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>`;
+    <div class="info-note" style="margin-bottom:8px">Any week where an item's Expected on hand ($) is at or above this dollar amount gets a "⚠ Check fridge" badge in the Variance table — a nudge to go actually look, not a confirmed loss.</div>
+    <div class="settings-field"><label>Alert threshold ($)</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>`;
   app.appendChild(alertCard);
   alertCard.querySelector('#alertThreshold').addEventListener('change', (e)=>{
     const v = parseFloat(e.target.value);
@@ -1549,9 +1637,11 @@ function renderSettings(app){
         <div class="settings-field"><label>Unit</label>
           <select data-k="unit">
             <option value="can" ${item.unit==='can'?'selected':''}>can/unit</option>
-            <option value="gallon" ${item.unit==='gallon'?'selected':''}>gallon</option>
+            <option value="gallon" ${item.unit==='gallon'?'selected':''}>bulk (portioned)</option>
           </select>
         </div>
+        <div class="settings-field"><label>Unit name</label><input type="text" data-k="unitLabel" value="${item.unitLabel ?? ''}" placeholder="gal, lb, case, qt, btl"></div>
+        <div class="settings-field"><label>Oz per unit (bulk)</label><input type="text" data-k="unitOz" value="${item.unitOz ?? ''}" placeholder="128 gal, 16 lb"></div>
         <div class="settings-field"><label>Price ($)</label><input type="text" data-k="price" value="${item.price}"></div>
         <div class="settings-field"><label>Cost ($)</label><input type="text" data-k="cost" value="${item.cost}"></div>
         <div class="settings-field"><label>Pour oz (gallon items)</label><input type="text" data-k="pourOz" value="${item.pourOz ?? ''}"></div>
@@ -1571,7 +1661,7 @@ function renderSettings(app){
         inp.addEventListener('change', (e)=>{
           const k = e.target.dataset.k;
           let v = e.target.value;
-          if(['price','cost','pourOz','defaultKitchen','parMultiplier'].includes(k)) v = v===''? null : parseFloat(v);
+          if(['price','cost','pourOz','unitOz','defaultKitchen','parMultiplier'].includes(k)) v = v===''? null : parseFloat(v);
           if(k==='orderOnly') v = v==='true';
           const vendorChanged = k==='vendor' && v!==item.vendor;
           item[k]=v;
@@ -1600,7 +1690,7 @@ function renderSettings(app){
     });
     card.appendChild(list);
     wireClick(card.querySelector('[data-add]'), ()=>{
-      const newItem = {id:'item'+Date.now(), name:'New Item', unit:'can', price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'', sizeLabel:'', orderOnly:false};
+      const newItem = {id:'item'+Date.now(), name:'New Item', unit:'can', unitLabel:'', unitOz:null, price:0, cost:0, pourOz:null, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'', sizeLabel:'', orderOnly:false};
       store.items.push(newItem);
       store.periods.forEach(p=>{
         p.weeks.forEach(w=>{ w[newItem.id] = {purchased:0,sold:0,discount:0,kitchen:0,notes:'',actualCount:''}; });
