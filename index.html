@@ -199,33 +199,33 @@ function defaultState(){
   // Unlike Central Phoenix, the coffee/tea/syrup items are NOT order-only here: isolating the
   // bar's espresso draw is the whole reason this instance exists, so they have to reconcile.
   const fellowItems = [
-    {id:'coke', name:"Soda, Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.963, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
-    {id:'dietcoke', name:"Soda, Diet Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.958, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
-    {id:'sprite', name:"Soda, Sprite 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.96, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false},
-    {id:'rootbeer', name:"Soda, Root Beer 12oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.5, cost:0.71, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz btl", orderOnly:false},
-    {id:'clubsoda', name:"Club Soda 10oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.0, cost:1.115, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"10 oz btl", orderOnly:false},
-    {id:'gingerbeer', name:"Ginger Beer 7.5oz Can", unit:'can', unitOz:null, pourOz:null, price:6.0, cost:1.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"7.5 oz can", orderOnly:false},
+    {id:'coke', name:"Soda, Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.963, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false, aliases:["Coca-Cola"]},
+    {id:'dietcoke', name:"Soda, Diet Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.958, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false, aliases:["Diet Coke"]},
+    {id:'sprite', name:"Soda, Sprite 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.96, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false, aliases:["Sprite"], recipeUsage:[{matchName:"Shirley Temple", ozPerUnit:1}]},
+    {id:'rootbeer', name:"Soda, Root Beer 12oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.5, cost:0.71, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz btl", orderOnly:false, aliases:["Root Beer"]},
+    {id:'clubsoda', name:"Club Soda 10oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.0, cost:1.115, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"10 oz btl", orderOnly:false, aliases:["Club Soda"]},
+    {id:'gingerbeer', name:"Ginger Beer 7.5oz Can", unit:'can', unitOz:null, pourOz:null, price:6.0, cost:1.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"7.5 oz can", orderOnly:false, aliases:["Ginger Beer"]},
     {id:'jarritos', name:"Jarritos Grapefruit 12.5oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:0, cost:1.063, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12.5 oz btl", orderOnly:false},
-    {id:'panna', name:"Acqua Panna Still Water 16.9oz", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:7.0, cost:1.533, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"16.9 oz btl", orderOnly:false},
-    {id:'pellegrino', name:"Pellegrino Sparkling", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:8.0, cost:1.596, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"btl", orderOnly:false},
-    {id:'lemonade', name:"Lemonade", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:8.18, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal jug", orderOnly:false},
-    {id:'wholemilk', name:"Milk, Whole", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:6.54, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal", orderOnly:false},
-    {id:'almondmilk', name:"Milk, Almond", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:6, price:0, cost:3.284, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (12/cs)", orderOnly:false},
-    {id:'oatmilk', name:"Milk, Oat", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:6, price:0, cost:3.297, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (6/cs)", orderOnly:false},
-    {id:'espresso', name:"Coffee, Espresso", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.63, price:0, cost:12.05, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 lb bag", orderOnly:false},
+    {id:'panna', name:"Acqua Panna Still Water 16.9oz", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:7.0, cost:1.533, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"16.9 oz btl", orderOnly:false, aliases:["Water, Bottled 16.9oz", "Acqua Panna Still Water"]},
+    {id:'pellegrino', name:"Pellegrino Sparkling", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:8.0, cost:1.596, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"btl", orderOnly:false, aliases:["Water, Sparkling", "Pellegrino"]},
+    {id:'lemonade', name:"Lemonade", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:8.18, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal jug", orderOnly:false, aliases:["Lemonade"], recipeUsage:[{matchName:"Arnold Palmer", ozPerUnit:4}]},
+    {id:'wholemilk', name:"Milk, Whole", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:4, price:5.0, cost:6.54, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal", orderOnly:false, aliases:["Milk"], recipeUsage:[{matchName:"Cappucino", ozPerUnit:4}, {matchName:"Cappuccino", ozPerUnit:4}, {matchName:"Cortado", ozPerUnit:4}, {matchName:"Latte", ozPerUnit:4}, {matchName:"Iced Latte", ozPerUnit:4}, {matchName:"Machiato", ozPerUnit:4}, {matchName:"Macchiato", ozPerUnit:4}, {matchName:"Mocha Latte", ozPerUnit:4}, {matchName:"Iced Mocha Latte", ozPerUnit:4}, {matchName:"Chai", ozPerUnit:4}, {matchName:"Dirty Chai", ozPerUnit:4}, {matchName:"Matcha Latte", ozPerUnit:4}, {matchName:"Iced Matcha", ozPerUnit:4}]},
+    {id:'almondmilk', name:"Milk, Almond", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:4, price:0, cost:3.284, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (12/cs)", orderOnly:false},
+    {id:'oatmilk', name:"Milk, Oat", unit:'gallon', unitLabel:'qt', unitOz:32, pourOz:4, price:0, cost:3.297, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"qt (6/cs)", orderOnly:false},
+    {id:'espresso', name:"Coffee, Espresso", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.63, price:0, cost:12.05, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 lb bag", orderOnly:false, recipeUsage:[{matchName:"Americano", ozPerUnit:0.63}, {matchName:"Iced Americano", ozPerUnit:0.63}, {matchName:"Cappucino", ozPerUnit:0.63}, {matchName:"Cappuccino", ozPerUnit:0.63}, {matchName:"Cortado", ozPerUnit:0.63}, {matchName:"Espresso", ozPerUnit:0.63}, {matchName:"Latte", ozPerUnit:0.63}, {matchName:"Iced Latte", ozPerUnit:0.63}, {matchName:"Machiato", ozPerUnit:0.63}, {matchName:"Macchiato", ozPerUnit:0.63}, {matchName:"Mocha Latte", ozPerUnit:0.63}, {matchName:"Iced Mocha Latte", ozPerUnit:0.63}, {matchName:"Dirty Chai", ozPerUnit:0.63}]},
     {id:'espressodecaf', name:"Coffee, Espresso Decaf", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.63, price:0, cost:11.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 lb bag", orderOnly:false},
-    {id:'tuscany', name:"Coffee, Tuscany Blend (drip)", unit:'gallon', unitLabel:'case', unitOz:1920, pourOz:10, price:5.0, cost:80.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"3.0 oz case", orderOnly:false},
+    {id:'tuscany', name:"Coffee, Tuscany Blend (drip)", unit:'gallon', unitLabel:'case', unitOz:1920, pourOz:10, price:5.0, cost:80.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"3.0 oz case", orderOnly:false, aliases:["Coffee, Tuscany Blend", "Drip Coffee"]},
     {id:'engbreakfast', name:"Tea, English Breakfast", unit:'gallon', unitLabel:'lb', unitOz:16, pourOz:0.07, price:0, cost:12.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"2 lb bag", orderOnly:false},
-    {id:'greenrice', name:"Tea, Hot Green w/ Rice", unit:'gallon', unitLabel:'bag', unitOz:32, pourOz:0.07, price:7.0, cost:26.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"2 lb bag", orderOnly:false},
-    {id:'icesencha', name:"Tea, Ice Green Sencha", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:5.0, cost:79.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false},
-    {id:'icetropical', name:"Tea, Ice Tropical Black", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:4.5, cost:69.25, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false},
-    {id:'matcha', name:"Matcha Powder", unit:'gallon', unitLabel:'bag', unitOz:17.6, pourOz:0.25, price:0, cost:33.35, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1.1 lb bag", orderOnly:false},
-    {id:'chai', name:"Syrup, Chai", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:2, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
+    {id:'greenrice', name:"Tea, Hot Green w/ Rice", unit:'gallon', unitLabel:'bag', unitOz:32, pourOz:0.07, price:7.0, cost:26.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"2 lb bag", orderOnly:false, aliases:["HOT Green Tea", "Hot Green Tea"]},
+    {id:'icesencha', name:"Tea, Ice Green Sencha", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:5.0, cost:79.75, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false, aliases:["Green Iced Tea"]},
+    {id:'icetropical', name:"Tea, Ice Tropical Black", unit:'gallon', unitLabel:'case', unitOz:9216, pourOz:6, price:4.5, cost:69.25, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"24 x 3.5 oz", orderOnly:false, aliases:["Tropical Iced Tea"], recipeUsage:[{matchName:"Arnold Palmer", ozPerUnit:2}]},
+    {id:'matcha', name:"Matcha Powder", unit:'gallon', unitLabel:'bag', unitOz:17.6, pourOz:0.247, price:0, cost:33.35, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1.1 lb bag", orderOnly:false, recipeUsage:[{matchName:"Matcha Latte", ozPerUnit:0.247}, {matchName:"Iced Matcha", ozPerUnit:0.247}]},
+    {id:'chai', name:"Syrup, Chai", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false, recipeUsage:[{matchName:"Chai", ozPerUnit:1}, {matchName:"Dirty Chai", ozPerUnit:1}]},
     {id:'caramel', name:"Syrup, Caramel", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
     {id:'vanilla', name:"Syrup, Vanilla", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
     {id:'hazelnut', name:"Syrup, Hazelnut", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
     {id:'pumpkin', name:"Syrup, Pumpkin Spice", unit:'gallon', unitLabel:'btl', unitOz:33.8, pourOz:1, price:0, cost:9.95, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"1 L btl", orderOnly:false},
-    {id:'chocsauce', name:"Sauce, Dark Chocolate", unit:'gallon', unitLabel:'btl', unitOz:64, pourOz:1, price:0, cost:16.4, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"64 oz btl", orderOnly:false},
+    {id:'chocsauce', name:"Sauce, Dark Chocolate", unit:'gallon', unitLabel:'btl', unitOz:64, pourOz:1, price:0, cost:16.4, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"64 oz btl", orderOnly:false, recipeUsage:[{matchName:"Mocha Latte", ozPerUnit:1}, {matchName:"Iced Mocha Latte", ozPerUnit:1}]},
     {id:'stevia', name:"Stevia Packets (Green)", unit:'can', unitLabel:'case', unitOz:null, pourOz:null, price:0, cost:32.97, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"case", orderOnly:true},
     {id:'sugar', name:"Sugar, In The Raw Packets", unit:'can', unitLabel:'case', unitOz:null, pourOz:null, price:0, cost:32.29, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Passport', sizeLabel:"case", orderOnly:true}
   ];
@@ -710,6 +710,12 @@ function matchItemByName(store, rawName){
   const norm = normalizeName(rawName);
   const exact = store.items.find(it=>normalizeName(it.name)===norm);
   if(exact) return exact;
+  // Toast and MarginEdge call the same product different things — MarginEdge says
+  // "Soda, Coke 12oz Can", Toast says "Coca-Cola". The substring fallback below only fires when
+  // the tracked name sits INSIDE the row name, which never happens in that direction, so every
+  // Toast sales row would land in "unmatched". `aliases` lists the POS spellings per item.
+  const aliased = store.items.find(it=>(it.aliases||[]).some(a=>normalizeName(a)===norm));
+  if(aliased) return aliased;
   // Fallback for verbose report names like "Soda, Diet Coke 12oz Can": match if the tracked
   // item's name appears inside the row as a whole substring, preferring the longest/most
   // specific match so "Diet Coke" wins over "Coke" on a "Diet Coke" row.
@@ -749,16 +755,21 @@ function processAnyCsvFile(file, store, weekData, weekIdx){
         // most recipe links are drinks guests order) or internal Kitchen use (e.g. a recipe that
         // uses the item but isn't itself sold to a guest).
         const norm = normalizeName(rawName);
-        let recipeHit = null;
+        // Fixed: this used to keep only the LAST matching item, so a drink built from several
+        // tracked ingredients drew down only one of them. A Latte is espresso AND milk; a Mocha
+        // Latte is espresso, milk AND chocolate; an Arnold Palmer is tea AND lemonade.
+        const recipeHits = [];
         store.items.forEach(it=>{
           (it.recipeUsage||[]).forEach(ru=>{
-            if(normalizeName(ru.matchName)===norm) recipeHit = {item: it, ozPerUnit: ru.ozPerUnit, addsTo: ru.addsTo || 'sold'};
+            if(normalizeName(ru.matchName)===norm) recipeHits.push({item: it, ozPerUnit: ru.ozPerUnit, addsTo: ru.addsTo || 'sold'});
           });
         });
-        if(recipeHit){
-          const rawServings = recipeHit.item.pourOz ? (qty*recipeHit.ozPerUnit)/recipeHit.item.pourOz : qty*recipeHit.ozPerUnit;
-          const servings = Math.round(rawServings*10)/10;
-          recipeMatches.push({item: recipeHit.item, sourceName: rawName, sourceQty: qty, addedServings: servings, addsTo: recipeHit.addsTo});
+        if(recipeHits.length){
+          recipeHits.forEach(h=>{
+            const rawServings = h.item.pourOz ? (qty*h.ozPerUnit)/h.item.pourOz : qty*h.ozPerUnit;
+            const servings = Math.round(rawServings*10)/10;
+            recipeMatches.push({item: h.item, sourceName: rawName, sourceQty: qty, addedServings: servings, addsTo: h.addsTo});
+          });
           return;
         }
         const item = matchItemByName(store, rawName);
