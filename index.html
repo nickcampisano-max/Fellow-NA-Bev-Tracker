@@ -93,6 +93,10 @@
   td:first-child, th:first-child { text-align: left; }
   td.left, th.left { text-align: left; }
   tr.total-row td { font-weight: 700; border-top: 2px solid var(--teal); border-bottom: none; color: var(--ink); }
+  tr.section-row td { background: var(--teal-bg, rgba(45,212,191,.08)); text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; padding-top: 14px; }
+  tr.section-row td .sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 11.5px; margin: 0; }
+  tr.subtotal-row td { font-weight: 600; color: var(--muted); border-top: 1px dashed var(--line, #333); }
+  tr.subtotal-row td:first-child { padding: 6px 8px; }
 
   input[type=text], input[type=number] {
     width: 56px; border: 1px solid var(--border); border-radius: 5px; padding: 5px 4px;
@@ -180,6 +184,11 @@ const LS_KEY = 'fellow_bev_tracker_v1';
 // in an exported backup, and needs to survive this app's own full re-render-on-every-edit pattern,
 // which a native <details> element's open/closed state would not.
 let expandedUnaccounted = new Set();
+// Collapsed by default, and deliberately module-level rather than persisted to state: the point of
+// the split is that opening the app on a Monday shows nine rows. If this were saved, one expansion
+// would silently undo that for every week after it. It survives in-session re-renders (same reason
+// expandedUnaccounted does) so editing a cell doesn't snap the group shut mid-review.
+let secondaryExpanded = false;
 
 // ---------- Default seed data ----------
 function defaultState(){
@@ -238,6 +247,7 @@ function defaultState(){
     activeStore: 'fellow',
     activeView: 'store', // 'store' | 'order' | 'settings'
     unaccountedAlertThreshold: 50,
+    countVarianceThreshold: 10,
     stores: {
       fellow: {
         name: 'Fellow Osteria',
@@ -279,13 +289,29 @@ function emptyOrders(items){
   return o;
 }
 
+// The items that actually carry the NA Bev number. Everything else is real product and still
+// reconciles — it just doesn't belong in the first thing you look at on a Monday. Verified against
+// Fellow P7-P9: these nine are where the cost lives. Kept as a set rather than a per-item flag so
+// changing the focus list is a one-line edit instead of nine.
+const FOCUS_IDS = new Set(['coke','dietcoke','sprite','rootbeer','clubsoda','gingerbeer','espresso','lemonade','wholemilk']);
+function isFocusItem(item){ return FOCUS_IDS.has(item.id); }
+
 function newPeriod(items, name, startDate){
   return {
     name: name || 'Period 1',
     startDate: startDate || '',
     beginInv: {}, // item.id -> beginning on-hand units, entered once
     weeks: [emptyWeek(items), emptyWeek(items), emptyWeek(items), emptyWeek(items)],
-    orders: [emptyOrders(items), emptyOrders(items), emptyOrders(items), emptyOrders(items)]
+    orders: [emptyOrders(items), emptyOrders(items), emptyOrders(items), emptyOrders(items)],
+    // Gross NA Bev sales for the period, typed in from the P&L / Toast. Needed for anything
+    // expressed as a percentage of sales — cost %, purchase rate, and the percentage-point effect
+    // of a transfer. Blank is honest: every percentage that depends on it hides rather than
+    // showing a number divided by zero.
+    naBevSales: '',
+    // Product that physically left NA Bev inventory but was consumed by another department, so its
+    // cost belongs on that department's line. Each entry: {itemId, units (native), dest, note}.
+    // Units are native (bottles, lb, gal) because that's what somebody actually counts or measures.
+    transfers: []
   };
 }
 
@@ -306,8 +332,24 @@ function normalizeLoadedState(parsed){
   pruneRemovedStores(parsed);
   migrateItemConfig(parsed);
   migrateOrders(parsed);
+  migratePeriodFields(parsed);
   if(parsed.unaccountedAlertThreshold === undefined) parsed.unaccountedAlertThreshold = 50;
   return parsed;
+}
+// Same backfill idea as migrateItemConfig/migrateOrders, for the two period-level fields added
+// for the cost-rate and transfer blocks. A period saved before those shipped has neither, and
+// reading `.transfers.forEach` off undefined would blank the whole app on load — which is exactly
+// the class of bug that made week-switching die before. Never touches a period that already has
+// them, so a typed-in sales figure or a logged transfer survives every future migration.
+function migratePeriodFields(parsed){
+  if(!parsed || !parsed.stores) return;
+  Object.values(parsed.stores).forEach(store=>{
+    if(!store || !Array.isArray(store.periods)) return;
+    store.periods.forEach(p=>{
+      if(p.naBevSales === undefined) p.naBevSales = '';
+      if(!Array.isArray(p.transfers)) p.transfers = [];
+    });
+  });
 }
 // Saved state in localStorage is whatever shape it was the last time save() ran — it does NOT
 // pick up new fields added to an item's definition in defaultState() afterward (e.g. adding
@@ -706,6 +748,15 @@ function findCol(headerKeys, candidates){
 // One dropzone handles both a Toast-style sales export (Item / Qty sold / Discount amt) and a
 // MarginEdge-style purchase report (Product / Purchased Units) — it sniffs the header row and
 // routes to the right parser, so there's nothing to pick or get wrong.
+// The week Total row has to add up what each cell actually shows — a confirmed count where one
+// was logged, the projection everywhere else — or the total disagrees with the column above it.
+function hasCountForTotals(item, weekData, r){
+  const raw = weekData[item.id].actualCount;
+  const has = raw !== '' && raw !== undefined && !isNaN(parseFloat(raw));
+  if(!has) return { units: r.unaccounted, cost: r.unaccountedCost };
+  const u = purchasedServings(item, parseFloat(raw));
+  return { units: u, cost: u * r.cps };
+}
 function matchItemByName(store, rawName){
   const norm = normalizeName(rawName);
   const exact = store.items.find(it=>normalizeName(it.name)===norm);
@@ -1098,19 +1149,16 @@ function renderStoreView(app){
   table.innerHTML = `<thead>
     <tr>
       <th class="left" rowspan="2">Item</th>
-      <th class="group-header this-week" colspan="7">This week</th>
+      <th class="group-header this-week" colspan="4">This week</th>
       <th class="group-header running-total" colspan="2">Running total <span class="sub">(since period start)</span></th>
       <th rowspan="2">Count (opt.)</th>
       <th class="left" rowspan="2">Notes</th>
     </tr>
     <tr>
       <th>Purchased</th>
-      <th title="Raw Toast 'Qty sold' for this item — every unit that left the building, paid or comped. This is the CSV import target; see Sold to guests for the paid-only breakdown.">Sold‡</th>
-      <th title="Sold minus Comped — units actually paid for by a guest. This is what generated real revenue.">Sold to guests</th>
-      <th title="Revenue actually collected from guests: Sold to guests × price. Equivalent to Toast's Net item amount.">$</th>
+      <th title="Raw Toast 'Qty sold' for this item — every unit that left the building, paid or comped. This is the CSV import target.">Sold‡</th>
       <th title="Estimated from Comped $ ÷ price, rounded to a whole item. This is a breakdown of Sold — how many of that Sold count were comped — not an additional quantity on top of it.">Comped*</th>
       <th title="The staff-comp perk dollar value, at menu price — same figure as Toast's Discount $ for this item. Locked to CSV import only, not manually editable, so this always matches Toast exactly.">Comped $</th>
-      <th title="Sold to guests × (price − cost). Real bottom-line profit on what actually sold — comped units cost money too, but that cost isn't charged against this number; see 'show the math' on Expected on hand for the comp's actual cost.">Profit</th>
       <th title="Beginning inventory + purchased since period start, minus Accounted for — this is what should currently be sitting in the fridge/cooler if nothing's gone wrong. It's a projection based on your records, not a confirmed count. A quick Monday glance in the fridge is the real check; it only becomes solid once you log an actual period-end count.">Expected on hand</th>
       <th title="Cost value of Expected on hand — a working number to track trend week to week, not a confirmed loss. Treat it as a placeholder until a physical count confirms it.">Expected on hand ($)</th>
     </tr>
@@ -1119,27 +1167,73 @@ function renderStoreView(app){
 
   let totUnacctCost=0, totPurchU=0, totUnacctUnits=0;
   let totSoldToGuests=0, totGuestRevenue=0, totComped=0, totDiscount=0, totProfit=0;
+  // Same accumulators, restricted to the collapsed group, so its one-line summary row states its
+  // own totals rather than a share of the grand total.
+  let secPurchU=0, secComped=0, secDiscount=0, secUnacctUnits=0, secUnacctCost=0, secAlerts=0;
 
   // Order-only items (coffee/tea via Passport) have no sales data and aren't part of NA Bev
   // variance reconciliation — they only appear in the Order Guide.
-  store.items.filter(it=>!it.orderOnly).forEach(item=>{
+  const tracked = store.items.filter(it=>!it.orderOnly);
+  // Split, not filtered: every tracked item still renders and still lands in the grand total. The
+  // nine focus items just render first, above a divider, because a Monday glance that starts with
+  // 29 rows is a Monday glance nobody takes. Partitioned here rather than sorted so the collapsed
+  // group can carry its own subtotal.
+  const focusItems = tracked.filter(isFocusItem);
+  const secondaryItems = tracked.filter(it=>!isFocusItem(it));
+
+  const buildRow = (item, isSecondary)=>{
     const carryIn = balanceEnteringWeek(store, period, item, weekIdx);
     const r = computeRow(item, weekData, carryIn);
-    totUnacctCost += r.unaccountedCost;
+    totUnacctCost += hasCountForTotals(item, weekData, r).cost;
     totPurchU += r.purchU;
-    totUnacctUnits += r.unaccounted;
+    totUnacctUnits += hasCountForTotals(item, weekData, r).units;
     totSoldToGuests += r.soldToGuests;
     totGuestRevenue += r.guestRevenue;
     totProfit += r.profit;
     totComped += r.comped;
     totDiscount += r.discount;
+    if(isSecondary){
+      secPurchU += r.purchU;
+      secComped += r.comped;
+      secDiscount += r.discount;
+      secUnacctUnits += hasCountForTotals(item, weekData, r).units;
+      secUnacctCost += hasCountForTotals(item, weekData, r).cost;
+    }
 
     const tr = document.createElement('tr');
     // See the threshold's comment in defaultState() — this looks at the actual size of the
     // unaccounted pile (in dollars, so it's comparable across items of very different volume/
     // cost), independent of this week's purchased-vs-sold flow.
     const threshold = state.unaccountedAlertThreshold ?? 50;
-    const isLargeUnaccounted = Math.abs(r.unaccountedCost) >= threshold;
+    // Fixed: a count logged in THIS week used to leave this week's own Expected on hand frozen on
+    // the projection. expectedOnHand() already resets to a logged count, so the count reached every
+    // later week, Period Summary, Compare Periods and next period's opening — every place except
+    // the row it was typed into, which made the field feel dead. Display-only on purpose:
+    // computeRow stays pure and expectedOnHand keeps owning the carry-forward, so the count is
+    // never applied twice. Note the guard tests for blank/undefined/NaN rather than falsiness, so a
+    // counted ZERO (item ran out) registers as a real count instead of being read as "not counted".
+    const countRaw = weekData[item.id].actualCount;
+    const hasCount = countRaw !== '' && countRaw !== undefined && !isNaN(parseFloat(countRaw));
+    const confirmedUnits = hasCount ? purchasedServings(item, parseFloat(countRaw)) : null;
+    const displayUnits = hasCount ? confirmedUnits : r.unaccounted;
+    const displayCost  = hasCount ? confirmedUnits * r.cps : r.unaccountedCost;
+    const varianceUnits = hasCount ? (confirmedUnits - r.unaccounted) : 0;
+    const varianceCost  = hasCount ? (displayCost - r.unaccountedCost) : 0;
+    // Two different questions, so two different tests. An UNCOUNTED row asks "is there enough
+    // product riding on an unverified projection to be worth a look?" — raw magnitude. A CONFIRMED
+    // row has already been looked at, so magnitude is meaningless there: what matters is whether
+    // the count disagreed with the records. Testing magnitude on a confirmed row is backwards — a
+    // perfect count of a large number screams, and a wildly wrong low count goes quiet.
+    // The two thresholds are deliberately different sizes: $50 of standing stock is unremarkable,
+    // $50 of variance is 52 Cokes or 4 lb of espresso. Variance gets its own, much tighter number.
+    const varThreshold = state.countVarianceThreshold ?? 10;
+    const isLargeUnaccounted = hasCount
+      ? Math.abs(varianceCost) >= varThreshold
+      : Math.abs(r.unaccountedCost) >= threshold;
+    // Counted here, not in the accumulator block above, because it depends on isLargeUnaccounted.
+    // The collapsed group hides rows, so it must not hide an alert — if something in there is
+    // flagged, the summary row says so and says how many.
+    if(isSecondary && isLargeUnaccounted) secAlerts++;
     // Gallon-tracked items (Lemonade) show every number in this row as servings-equivalent — every
     // Purchased/Sold/Comped/Accounted-for/Unaccounted figure is in the same unit Gary actually rings
     // at the POS (1 lemonade = 1 serving), converted from gallons purchased via 128oz/gal ÷ pourOz.
@@ -1149,9 +1243,10 @@ function renderStoreView(app){
     // itself, with the gallon-equivalent underneath for checking against an actual jug count.
     const unitNote = isBulk(item) ? `servings (${item.pourOz}oz pour)` : '';
     const unitSuffix = isBulk(item) ? ' sv' : '';
-    const unaccountedLabel = isBulk(item)
-      ? `${fmtN(r.unaccounted)} sv<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, r.unaccounted))} ${nativeLabel(item)}</div>`
-      : fmtN(r.unaccounted);
+    const unaccountedLabel = (isBulk(item)
+      ? `${fmtN(displayUnits)} sv<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, displayUnits))} ${nativeLabel(item)}</div>`
+      : fmtN(displayUnits))
+      + (hasCount ? `<div class="info-note" style="margin:0; color:var(--green)">&#10003; confirmed by count</div>` : '');
     // "Show the math" toggle — the whole point is Gary shouldn't have to reconstruct this
     // arithmetic by hand to trust the number (which is exactly what tripped Nick up on Coke and
     // the Lemonade gallon conversion). Off by default so the table stays as clean as it was before
@@ -1171,12 +1266,14 @@ function renderStoreView(app){
         Available: ${fmtN(servingsToNative(item, carryIn))} jugs carried in + ${fmtN(r.purchased)} jugs bought = ${fmtN(servingsToNative(item, carryIn + r.purchU))} jugs<br>
         − Poured out: ${fmtN(r.sold)} lemonades sold (${fmtN(r.comped)} of those were comped, already included) = ${fmtN(r.accountedFor)} lemonades (≈${fmtN(servingsToNative(item, r.accountedFor))} jugs)<br>
         = <strong>${fmtN(servingsToNative(item, r.unaccounted))} jugs expected on hand</strong><br>
+        ${hasCount ? `Counted: <strong>${fmtN(servingsToNative(item, confirmedUnits))} ${nativeLabel(item)}</strong> &mdash; ${varianceUnits===0?'exactly as predicted':(fmtN(Math.abs(servingsToNative(item, varianceUnits)))+' '+nativeLabel(item)+' '+(varianceUnits<0?'short':'over')+' ('+fmt$(Math.abs(varianceCost))+')')}<br>` : ''}
         Comping those ${fmtN(r.comped)} cost ${fmt$(r.compCost)} in actual product cost (separate from Comped $, which is the menu-price value given away).
       </div>` : `
       <div class="info-note" style="margin-top:6px; text-align:left; max-width:220px; white-space:normal">
         Available: ${fmtN(carryIn)} carried in + ${fmtN(r.purchU)} bought = ${fmtN(carryIn + r.purchU)}${unitSuffix}<br>
         − Accounted for: ${fmtN(r.sold)} sold (${fmtN(r.comped)} of those comped, already included)${r.kitchen ? ' + '+fmtN(r.kitchen)+' kitchen' : ''} = ${fmtN(r.accountedFor)}${unitSuffix}<br>
         = <strong>${fmtN(r.unaccounted)}${unitSuffix} expected on hand</strong><br>
+        ${hasCount ? `Counted: <strong>${fmtN(confirmedUnits)}${unitSuffix}</strong> &mdash; ${varianceUnits===0?'exactly as predicted':(fmtN(Math.abs(varianceUnits))+unitSuffix+' '+(varianceUnits<0?'short':'over')+' ('+fmt$(Math.abs(varianceCost))+')')}<br>` : ''}
         Comping those ${fmtN(r.comped)} cost ${fmt$(r.compCost)} in actual product cost (separate from Comped $, which is the menu-price value given away).
       </div>`
     ) : '';
@@ -1184,13 +1281,12 @@ function renderStoreView(app){
       <td class="left"><strong>${item.name}</strong><div class="info-note" style="margin:0">${unitNote}</div></td>
       <td><input type="text" data-f="purchased" value="${weekData[item.id].purchased}"></td>
       <td><input type="text" data-f="sold" value="${weekData[item.id].sold}"></td>
-      <td>${fmtN(r.soldToGuests)}</td>
-      <td>${fmt$(r.guestRevenue)}</td>
       <td>${fmtN(r.comped)}</td>
       <td title="Locked to CSV import — not manually editable, so this always matches Toast exactly.">${fmt$(r.discount)}</td>
-      <td style="color:${r.profit<0?'var(--red)':'var(--ink)'}">${fmt$(r.profit)}</td>
-      <td style="font-weight:700; color:${r.unaccounted>0?'var(--red)':'var(--ink)'}">${unaccountedLabel} <button type="button" class="info-toggle" data-breakdown-key="${breakdownKey}" title="Show the math behind this number">${isExpanded?'▲':'ⓘ'}</button>${breakdown}</td>
-      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(r.unaccountedCost)}${isLargeUnaccounted?`<span class="flag alert-large" title="Expected on hand's dollar value (${fmt$(r.unaccountedCost)}) is at or above your $${threshold} alert threshold — worth an actual glance in the fridge to see if this matches reality">⚠ Check fridge</span>`:''}</td>
+      <td style="font-weight:700; color:${displayUnits>0?'var(--red)':'var(--ink)'}">${unaccountedLabel} <button type="button" class="info-toggle" data-breakdown-key="${breakdownKey}" title="Show the math behind this number">${isExpanded?'▲':'ⓘ'}</button>${breakdown}</td>
+      <td style="${isLargeUnaccounted?'font-weight:700; color:#fb923c;':''}">${fmt$(displayCost)}${isLargeUnaccounted?(hasCount
+        ? `<span class="flag alert-large" title="The count came in ${fmtN(Math.abs(varianceUnits))}${unitSuffix} ${varianceUnits<0?'under':'over'} what the records predicted (${fmt$(Math.abs(varianceCost))}), at or above your $${varThreshold} count-variance threshold">&#9888; Count off by ${fmt$(Math.abs(varianceCost))}</span>`
+        : `<span class="flag alert-large" title="Expected on hand's dollar value (${fmt$(r.unaccountedCost)}) is at or above your $${threshold} alert threshold — worth an actual glance in the fridge to see if this matches reality">&#9888; Check fridge</span>`):''}</td>
       <td><input type="text" data-f="actualCount" value="${weekData[item.id].actualCount}" placeholder="—"></td>
       <td class="left"><textarea class="note" data-f="notes">${weekData[item.id].notes}</textarea></td>
     `;
@@ -1214,24 +1310,69 @@ function renderStoreView(app){
         renderStoreViewInPlace();
       });
     });
-  });
+  };
 
-  // total row — column order matches the header: Item, Purchased, [Sold skipped], Sold to guests,
-  // $ (guest revenue), Comped, Comped $, Profit, Expected on hand, Expected on hand ($), [Count/Notes skipped].
-  // totAccounted is still computed above (needed for Expected on hand) even though it's no longer
-  // shown as its own column.
+  // Section header rows use the full 9-column width. Plain <td colspan> rather than a nested
+  // table so every row in both groups stays on one set of column widths — two tables side by side
+  // would drift apart the moment one group had a longer item name than the other.
+  const sectionRow = (label, sub)=>{
+    const tr = document.createElement('tr');
+    tr.className = 'section-row';
+    tr.innerHTML = `<td class="left" colspan="9"><strong>${label}</strong>${sub?` <span class="sub">${sub}</span>`:''}</td>`;
+    return tr;
+  };
+
+  tbody.appendChild(sectionRow('Where it&rsquo;s going', 'the nine items that carry the NA Bev number'));
+  focusItems.forEach(item=>buildRow(item, false));
+
+  // The collapsed group is built either way — its rows are only appended when expanded, but the
+  // subtotal has to be computed from the same buildRow pass that would render them, or the two
+  // could disagree. Building then discarding is cheap (20 rows) and guarantees the one-line
+  // summary and the expanded rows are always the same numbers.
+  const secondaryRows = [];
+  const appendTo = tbody.appendChild.bind(tbody);
+  tbody.appendChild = (node)=>{ secondaryRows.push(node); return node; };
+  secondaryItems.forEach(item=>buildRow(item, true));
+  tbody.appendChild = appendTo;
+
+  tbody.appendChild(sectionRow('Everything else', `${secondaryItems.length} items — syrups, teas, waters, alt milks`));
+  if(secondaryExpanded){
+    secondaryRows.forEach(tr=>tbody.appendChild(tr));
+  }
+  const trSec = document.createElement('tr');
+  trSec.className = 'subtotal-row';
+  trSec.innerHTML = `<td class="left"><button type="button" class="btn secondary small" id="toggleSecondary">${secondaryExpanded?'▲ Collapse':'▼ Show all '+secondaryItems.length}</button></td>`
+    + `<td>${fmtN(secPurchU)}</td><td></td><td>${fmtN(secComped)}</td><td>${fmt$(secDiscount)}</td>`
+    + `<td style="color:${secUnacctUnits>0?'var(--red)':'var(--ink)'}">${fmtN(secUnacctUnits)}</td>`
+    + `<td>${fmt$(secUnacctCost)}${secAlerts?` <span class="flag alert-large" title="${secAlerts} item${secAlerts===1?'':'s'} in this group ${secAlerts===1?'is':'are'} flagged — expand to see which">&#9888; ${secAlerts} flagged</span>`:''}</td>`
+    + `<td colspan="2"></td>`;
+  tbody.appendChild(trSec);
+
+  // total row — column order matches the trimmed header: Item, Purchased, Sold (blank: summing raw
+  // Sold across items of different units is meaningless), Comped, Comped $, Expected on hand,
+  // Expected on hand ($), [Count/Notes skipped]. Sold to guests / $ / Profit were cut 2026-09-16:
+  // twelve columns didn't fit without a horizontal scroll, and a scroll on the one table people
+  // check weekly means half of it never gets read. Profit per item was the least-used of the three
+  // — the money question here is what left without a sale, not the margin on what did sell.
+  // totSoldToGuests/totGuestRevenue/totProfit are still accumulated for the email export.
   const trTot = document.createElement('tr');
   trTot.className='total-row';
-  trTot.innerHTML = `<td class="left">Total</td><td>${fmtN(totPurchU)}</td><td></td><td>${fmtN(totSoldToGuests)}</td><td>${fmt$(totGuestRevenue)}</td><td>${fmtN(totComped)}</td><td>${fmt$(totDiscount)}</td><td>${fmt$(totProfit)}</td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
+  trTot.innerHTML = `<td class="left">Total <span class="sub">(all ${tracked.length})</span></td><td>${fmtN(totPurchU)}</td><td></td><td>${fmtN(totComped)}</td><td>${fmt$(totDiscount)}</td><td style="color:var(--red)">${fmtN(totUnacctUnits)}</td><td>${fmt$(totUnacctCost)}</td><td colspan="2"></td>`;
   tbody.appendChild(trTot);
 
   table.appendChild(tbody);
   wcard.appendChild(table);
+  // Wired after the table is in the DOM, and via wireClick like every other control here, so it
+  // survives the full re-render the way the week tabs do.
+  wireClick(table.querySelector('#toggleSecondary'), ()=>{
+    secondaryExpanded = !secondaryExpanded;
+    renderStoreViewInPlace();
+  });
   // insertAdjacentHTML, not innerHTML +=: the latter re-serializes and reparses every existing
   // child of wcard (including the week tab buttons wired up above), which silently destroys the
   // click handlers wireClick just attached to them. This was the actual cause of week-switching
   // not working — not a browser quirk, a bug in this line.
-  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = Comped $ ÷ price, rounded to a whole item — this is a breakdown of how many of "Sold" were comped, not an extra quantity added on top. "Sold to guests" and its "$" are Sold minus Comped and that revenue — the actual profit-generating half of Sold, separate from the staff-perk half. ‡"Sold" is every unit that left the building, paid or comped — Toast counts a 100%-discounted comp as a sale (at $0 revenue), it only excludes voided items, which don't appear here at all. "This week" columns are just this week's facts — what was purchased, sold, comped, and profited this week, nothing carried over. "Expected on hand" and "Expected on hand ($)" are different: the full running total since the period started — what your records say should currently be sitting in the fridge, and its cost. This is a projection from purchase/sales records, not a confirmed count — nobody's walked over and checked it yet. Use it as a working tool: log sales and purchasing weekly like normal, then take a Monday glance in the fridge and compare it to "Expected on hand." The two can disagree on purpose — this week's numbers can look completely normal while the running total is still worth eyeballing against reality. The number only becomes solid once you log an actual count — "Count" here resets the running total for this week's check, and a full period-end count (Ending on-hand, carried into the next period's Beginning on-hand) is what actually confirms or clears it. Period Summary and the email export total each week's own This-Week flow, not this running balance.</div>`);
+  wcard.insertAdjacentHTML('beforeend', `<div class="info-note">*Comped = Comped $ ÷ price, rounded to a whole item — a breakdown of how many of "Sold" were comped, not an extra quantity on top. ‡"Sold" is every unit that left the building, paid or comped — Toast counts a 100%-discounted comp as a sale (at $0 revenue); it only excludes voids, which never appear here. "This week" columns are this week&rsquo;s facts alone. "Expected on hand" and its "($)" are different: the running total since the period started — what your records say should be in the fridge right now, and its cost. That is a projection from purchase and sales records, not a confirmed count. Log a count in the Count column and this week&rsquo;s figure switches to the counted number and shows the variance against the projection. Items are split into the nine that carry the number and everything else; the collapsed group still totals into Total and still raises its flags in its own summary row, so nothing is hidden, just folded. Sold to guests, its revenue column and Profit were removed 2026-09-16 to get the table under one screen width — they are still computed and still appear in the Period Summary email export.</div>`);
   app.appendChild(wcard);
 
   function renderStoreViewInPlace(){
@@ -1338,12 +1479,205 @@ function renderPeriodSummary(app, store, period){
   card.appendChild(tbl);
   app.appendChild(card);
 
+  renderCostRate(app, store, period);
+  renderTransfers(app, store, period);
+
   wireClick(card.querySelector('#copyEmailBtn'), ()=>{
     const text = generateEmail(store, period, perItem, totMissingCost, totProfit, totComp, totDisc);
     navigator.clipboard.writeText(text).then(()=>showToast('Email copied to clipboard')).catch(()=>{
       const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
       document.execCommand('copy'); document.body.removeChild(ta); showToast('Email copied to clipboard');
     });
+  });
+}
+
+// Dollar value of the period's beginning on-hand and its expected/counted ending on-hand. These
+// are the two numbers the P&L calls Inventory, and the gap between them is the EOP Adjustment.
+function periodInventoryValue(store, period, atEnd){
+  return store.items.filter(it=>!it.orderOnly).reduce((sum, item)=>{
+    const servings = atEnd
+      ? expectedOnHand(store, period, item, period.weeks.length-1)
+      : purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
+    return sum + servings * costPerServing(item);
+  }, 0);
+}
+// Dollar value of everything purchased in the period, at item cost. Native units x native cost —
+// deliberately NOT via purchasedServings, because a purchase's dollar value doesn't depend on how
+// many drinks a jug pours.
+function periodPurchaseValue(store, period){
+  return store.items.filter(it=>!it.orderOnly).reduce((sum, item)=>{
+    let native = 0;
+    period.weeks.forEach(w=>{ native += parseFloat(w[item.id]?.purchased) || 0; });
+    return sum + native * (parseFloat(item.cost) || 0);
+  }, 0);
+}
+
+// ---------- Cost rate ----------
+// Added 2026-09-16 after reconciling Fellow's P7-P9 EOP sheet. The P&L computes NA Bev cost as
+// (Purchases + EOP Adjustment) / Gross Sales, where EOP Adjustment = opening inventory - closing
+// inventory. That makes the headline cost % swing hard on stocking timing rather than on anything
+// operational: Fellow's P7 read 29.32% and P8 read 39.48%, but P7 built $245 of inventory that P8
+// then drew back down, and paired together the two periods are 34.81%. A ten-point "jump" that was
+// never a jump. So this card shows the P&L number AND the two numbers that don't lie: purchases as
+// a share of sales (immune to inventory timing), and the size of the inventory swing itself, so
+// you can see when the headline is being distorted before you act on it.
+function renderCostRate(app, store, period){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>Cost rate &mdash; ${period.name}</h2>`;
+
+  const sales = parseFloat(period.naBevSales) || 0;
+  const purchases = periodPurchaseValue(store, period);
+  const openInv = periodInventoryValue(store, period, false);
+  const closeInv = periodInventoryValue(store, period, true);
+  const eopAdj = openInv - closeInv;      // same sign convention as the P&L sheet
+  const cogs = purchases + eopAdj;
+
+  const salesRow = document.createElement('div');
+  salesRow.className = 'rowflex';
+  salesRow.innerHTML = `<label style="margin:0">Gross NA Bev sales this period <span class="sub" style="margin:0">(from Toast or the P&amp;L)</span></label>`;
+  const salesInput = document.createElement('input');
+  salesInput.type = 'text';
+  salesInput.value = period.naBevSales;
+  salesInput.placeholder = 'e.g. 3199.50';
+  salesInput.style.maxWidth = '160px';
+  // 'change', not 'input' — same reason as the week table: this handler re-renders the view.
+  salesInput.addEventListener('change', (e)=>{ period.naBevSales = e.target.value; save(); render(); });
+  salesRow.appendChild(salesInput);
+  card.appendChild(salesRow);
+
+  // Weeks with nothing entered yet are not weeks with zero sales. Mid-period, expectedOnHand()
+  // walks all four weeks and the empty ones contribute no consumption, so closing inventory reads
+  // artificially high, the inventory change reads as a big build, and the card would confidently
+  // tell you that you stocked up and cost got pushed forward. Every Monday, wrongly. So the
+  // period's completeness is checked first and the interpretation is held back until it's real.
+  const weeksEntered = period.weeks.filter(w=>store.items.some(it=>{
+    const d=w[it.id]; return d && ((parseFloat(d.purchased)||0)>0 || (parseFloat(d.sold)||0)>0 || (parseFloat(d.discount)||0)>0);
+  })).length;
+  const partial = weeksEntered < period.weeks.length;
+
+  const kpis = document.createElement('div');
+  kpis.className = 'kpi-grid';
+  const pct = (n)=> sales>0 ? (n/sales*100).toFixed(2)+'%' : '&mdash;';
+  // Two points of sales is the line where the swing starts moving the headline enough to argue
+  // about. Below that it's noise; above it, the cost % is telling you about a delivery date.
+  const swingPts = sales>0 ? Math.abs(eopAdj)/sales*100 : 0;
+  const swingBad = swingPts >= 2;
+  kpis.innerHTML = `
+    <div class="kpi"><div class="label">Purchases</div><div class="value">${fmt$(purchases)}</div><div class="sub" style="margin:0">${pct(purchases)} of sales</div></div>
+    <div class="kpi"><div class="label" title="Opening inventory minus closing inventory, the same figure the P&L sheet calls EOP Adjustment. Positive means inventory came down and added to cost; negative means you stocked up and cost got pushed into next period.">Inventory change</div><div class="value" style="color:${swingBad&&!partial?'#fb923c':'var(--ink)'}">${partial?'&mdash;':fmt$(eopAdj)}</div><div class="sub" style="margin:0">${partial?'needs a full period':fmt$(openInv)+' &rarr; '+fmt$(closeInv)}</div></div>
+    <div class="kpi"><div class="label" title="Purchases + inventory change. This is what physically left inventory this period.">COGS</div><div class="value">${partial?'&mdash;':fmt$(cogs)}</div><div class="sub" style="margin:0">${partial?'needs a full period':pct(cogs)+' of sales'}</div></div>
+    <div class="kpi"><div class="label" title="COGS divided by gross sales — the number that shows up on the P&L.">Cost %</div><div class="value" style="color:${!partial&&sales>0&&cogs/sales>=0.30?'var(--red)':'var(--ink)'}">${partial?'&mdash;':pct(cogs)}</div><div class="sub" style="margin:0">${partial?'needs a full period':'P&amp;L headline'}</div></div>
+    <div class="kpi"><div class="label" title="Purchases divided by gross sales. Ignores inventory timing entirely, so it does not swing when a delivery lands on the wrong side of a count, and it is readable mid-period. Watch this one week to week.">Purchase rate</div><div class="value">${pct(purchases)}</div><div class="sub" style="margin:0">timing-proof${partial?' &middot; readable now':''}</div></div>`;
+  card.appendChild(kpis);
+
+  const note = document.createElement('div');
+  note.className = 'info-note';
+  if(sales <= 0){
+    note.innerHTML = `Enter gross NA Bev sales above to see the percentages. Everything else on this card is computed from purchases, beginning on-hand and the period&rsquo;s ending position, so it is already correct &mdash; only the &ldquo;of sales&rdquo; figures are waiting on that one number.`;
+  } else if(partial){
+    note.innerHTML = `<strong>${weeksEntered} of ${period.weeks.length} weeks entered &mdash; cost %, COGS and inventory change are held back until the period is complete.</strong> `
+      + `They would lie right now: an empty week is not a week with no sales, but the running on-hand treats it as one, so closing inventory reads high and the period would look like it stocked up no matter what actually happened. `
+      + `<strong>Purchase rate (${pct(purchases)}) is readable today</strong> &mdash; it is just what you bought over what you sold, and it never depends on a count. That is the number to watch weekly; the rest becomes real when week ${period.weeks.length} is in and the period-end count is logged.`;
+  } else if(swingBad){
+    note.innerHTML = `<strong style="color:#fb923c">&#9888; Cost % is distorted this period.</strong> Inventory moved ${fmt$(Math.abs(eopAdj))}, worth ${swingPts.toFixed(2)} points of sales, so the ${pct(cogs)} headline is partly a stocking-timing artifact rather than an operational result. ${eopAdj<0?'You stocked up: cost that belongs to this period got pushed into the next one, and this period reads better than it was.':'You drew inventory down: cost from a prior period landed here, and this period reads worse than it was.'} Purchase rate (${pct(purchases)}) is the number to trust &mdash; it ignores inventory timing. Compare two periods together before concluding anything moved.`;
+  } else {
+    note.innerHTML = `Inventory moved ${fmt$(Math.abs(eopAdj))} this period, ${swingPts.toFixed(2)} points of sales &mdash; small enough that the ${pct(cogs)} cost % is a fair read rather than a timing artifact. Purchase rate (${pct(purchases)}) is the number to watch week to week: it ignores inventory timing entirely, so a delivery landing on the wrong side of a count cannot move it.`;
+  }
+  card.appendChild(note);
+  app.appendChild(card);
+}
+
+// ---------- Transfers out ----------
+// Product that physically left NA Bev inventory but was consumed by another department, so its
+// cost belongs on that department's line. At Fellow this is real and measurable: the kitchen's
+// tempura batter takes 7.2 bottles of club soda per batch, and every espresso martini pulls 2oz of
+// NA Bev espresso while ringing as a bar sale. Both are already inside COGS above — this card does
+// not change COGS, it attributes part of it, so Nick can say "cost read X%, transfers were Y
+// points, true NA Bev cost was Z%" with the arithmetic shown rather than asserted.
+function renderTransfers(app, store, period){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<div class="rowflex"><h2>Transfers out &mdash; bar &amp; kitchen</h2><button class="btn secondary small" id="addTransferBtn">+ Add transfer</button></div>`;
+
+  const sales = parseFloat(period.naBevSales) || 0;
+  const tracked = store.items.filter(it=>!it.orderOnly);
+  const tbl = document.createElement('table');
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th class="left">Goes to</th><th>Units (native)</th><th>Cost</th><th title="What this transfer is worth as a share of NA Bev sales — how many points it takes off the cost %.">Points of cost %</th><th class="left">Note</th><th></th></tr></thead>`;
+  const tb = document.createElement('tbody');
+
+  let totCost = 0;
+  period.transfers.forEach((t, idx)=>{
+    const item = store.items.find(i=>i.id===t.itemId);
+    // Native units x native cost, matching periodPurchaseValue — somebody counts bottles and
+    // pounds, not serving-equivalents, so that's what gets typed and that's what gets costed.
+    const cost = item ? (parseFloat(t.units)||0) * (parseFloat(item.cost)||0) : 0;
+    totCost += cost;
+    const tr = document.createElement('tr');
+    const itemOpts = tracked.map(i=>`<option value="${i.id}"${i.id===t.itemId?' selected':''}>${i.name}</option>`).join('');
+    tr.innerHTML = `
+      <td class="left"><select data-tf="itemId">${itemOpts}</select></td>
+      <td class="left"><select data-tf="dest"><option value="kitchen"${t.dest==='kitchen'?' selected':''}>Kitchen</option><option value="bar"${t.dest==='bar'?' selected':''}>Bar</option></select></td>
+      <td><input type="text" data-tf="units" value="${t.units ?? ''}" style="max-width:90px"><div class="info-note" style="margin:0">${item?nativeLabel(item):''}</div></td>
+      <td>${fmt$(cost)}</td>
+      <td>${sales>0 ? (cost/sales*100).toFixed(2)+' pts' : '&mdash;'}</td>
+      <td class="left"><input type="text" data-tf="note" value="${(t.note||'').replace(/"/g,'&quot;')}" placeholder="e.g. tempura, 2.8 batches/wk"></td>
+      <td><button type="button" class="btn secondary small" data-tf-remove="${idx}">Remove</button></td>`;
+    tr.querySelectorAll('[data-tf]').forEach(el=>{
+      el.addEventListener('change', (e)=>{ t[e.target.dataset.tf] = e.target.value; save(); render(); });
+    });
+    wireClick(tr.querySelector('[data-tf-remove]'), ()=>{ period.transfers.splice(idx,1); save(); render(); });
+    tb.appendChild(tr);
+  });
+
+  if(!period.transfers.length){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="left" colspan="7"><span class="sub" style="margin:0">Nothing logged yet. Add a transfer once somebody has actually measured it &mdash; a guess here moves the cost % just as much as a real number does.</span></td>`;
+    tb.appendChild(tr);
+  } else {
+    const tr = document.createElement('tr');
+    tr.className = 'total-row';
+    tr.innerHTML = `<td class="left">Total</td><td></td><td></td><td>${fmt$(totCost)}</td><td>${sales>0?(totCost/sales*100).toFixed(2)+' pts':'&mdash;'}</td><td colspan="2"></td>`;
+    tb.appendChild(tr);
+  }
+  tbl.appendChild(tb);
+  card.appendChild(tbl);
+
+  const note = document.createElement('div');
+  note.className = 'info-note';
+  if(sales > 0 && totCost > 0){
+    const purchases = periodPurchaseValue(store, period);
+    const cogs = purchases + (periodInventoryValue(store, period, false) - periodInventoryValue(store, period, true));
+    const headline = cogs/sales*100, pts = totCost/sales*100;
+    // Same completeness guard as the cost-rate card: mid-period the headline is not a real
+    // cost %, so subtracting transfer points from it would produce a confident wrong answer.
+    const weeksEntered = period.weeks.filter(w=>store.items.some(it=>{
+      const d=w[it.id]; return d && ((parseFloat(d.purchased)||0)>0 || (parseFloat(d.sold)||0)>0 || (parseFloat(d.discount)||0)>0);
+    })).length;
+    if(weeksEntered < period.weeks.length){
+      note.innerHTML = `<strong>Transfers so far: ${fmt$(totCost)}, worth ${pts.toFixed(2)} points of NA Bev sales.</strong> `
+        + `The true-cost subtraction waits for a complete period &mdash; with ${weeksEntered} of ${period.weeks.length} weeks entered the cost % is not a real number yet, and taking points off a number that is not real would just move the error. `
+        + `The points figure above is already valid, since it only needs the transfer and the sales.`;
+      card.appendChild(note); app.appendChild(card);
+      wireClick(card.querySelector('#addTransferBtn'), ()=>{
+        const first = tracked[0];
+        period.transfers.push({itemId: first ? first.id : '', units:'', dest:'kitchen', note:''});
+        save(); render();
+      });
+      return;
+    }
+    note.innerHTML = `<strong>NA Bev cost read ${headline.toFixed(2)}%. Transfers to the bar and kitchen account for ${pts.toFixed(2)} points. True NA Bev cost: ${(headline-pts).toFixed(2)}%.</strong> `
+      + `That product is still bought, still counted and still inside COGS &mdash; this only says whose line it belongs on. It is not a credit until the other department&rsquo;s cost goes up by the same ${fmt$(totCost)}.`;
+  } else {
+    note.innerHTML = `Log measured transfers here and the card computes what they are worth in dollars and in points off the NA Bev cost %. Units are in each item&rsquo;s native unit &mdash; bottles, pounds, gallons &mdash; because that is what somebody can actually count. This never changes COGS; it attributes part of it.`;
+  }
+  card.appendChild(note);
+  app.appendChild(card);
+
+  wireClick(card.querySelector('#addTransferBtn'), ()=>{
+    const first = tracked[0];
+    period.transfers.push({itemId: first ? first.id : '', units:'', dest:'kitchen', note:''});
+    save(); render();
   });
 }
 
@@ -1626,11 +1960,18 @@ function renderSettings(app){
   alertCard.className = 'card';
   alertCard.innerHTML = `<h3>Alerts</h3>
     <div class="info-note" style="margin-bottom:8px">Any week where an item's Expected on hand ($) is at or above this dollar amount gets a "⚠ Check fridge" badge in the Variance table — a nudge to go actually look, not a confirmed loss.</div>
-    <div class="settings-field"><label>Alert threshold ($)</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>`;
+    <div class="settings-field"><label>Alert threshold ($)</label><input type="text" id="alertThreshold" value="${state.unaccountedAlertThreshold ?? 50}" style="width:90px"></div>
+    <div class="info-note" style="margin:10px 0 8px">Once a row has an actual count logged, the badge stops asking "is this a lot of product?" and starts asking "did the count disagree with the records?" — a different question that needs a much smaller number. $50 of standing stock is unremarkable; $50 of <em>variance</em> is 52 Cokes or 4 lb of espresso.</div>
+    <div class="settings-field"><label>Count variance threshold ($)</label><input type="text" id="varThreshold" value="${state.countVarianceThreshold ?? 10}" style="width:90px"></div>`;
   app.appendChild(alertCard);
   alertCard.querySelector('#alertThreshold').addEventListener('change', (e)=>{
     const v = parseFloat(e.target.value);
     state.unaccountedAlertThreshold = isNaN(v) ? 50 : v;
+    save(); render();
+  });
+  alertCard.querySelector('#varThreshold').addEventListener('change', (e)=>{
+    const v = parseFloat(e.target.value);
+    state.countVarianceThreshold = isNaN(v) ? 10 : v;
     save(); render();
   });
 
