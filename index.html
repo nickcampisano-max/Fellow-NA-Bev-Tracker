@@ -189,6 +189,10 @@ let expandedUnaccounted = new Set();
 // would silently undo that for every week after it. It survives in-session re-renders (same reason
 // expandedUnaccounted does) so editing a cell doesn't snap the group shut mid-review.
 let secondaryExpanded = false;
+// Period Summary keeps its own toggle rather than sharing the week table's. They answer different
+// questions and get read at different times — expanding one to chase a syrup should not silently
+// unfold the other on a view you are about to glance at.
+let periodSecondaryExpanded = false;
 
 // ---------- Default seed data ----------
 function defaultState(){
@@ -1465,19 +1469,66 @@ function renderPeriodSummary(app, store, period){
   const tbl = document.createElement('table');
   tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th title="What your records say should currently be in the fridge for this item — a projection, unless a Week 4 count has been logged for it (marked ✓), which makes it the confirmed ending number instead.">Product missing</th><th>Product missing ($)</th><th title="Comped units this period — already part of Accounted, not additional.">Comped</th><th title="Profit on paid sales this period.">Profit</th></tr></thead>`;
   const tb = document.createElement('tbody');
-  perItem.slice().sort((a,b)=>b.missingCost-a.missingCost).forEach(({item,pu,ac,compSum,missingUnits,missingCost,profitSum,confirmed})=>{
+
+  // Same split as the weekly table, and for the same reason: the nine items that carry the number
+  // read first, everything else folds behind a subtotal. Sorted by missing-cost WITHIN each group,
+  // so the worst offender in each still surfaces to the top of its own block rather than the split
+  // hiding it. 7 columns here, not the week view's 9.
+  const buildPeriodRow = (r)=>{
+    const {item,pu,ac,compSum,missingUnits,missingCost,profitSum,confirmed} = r;
     const tr = document.createElement('tr');
     const unitNote = isBulk(item) ? `servings (${item.pourOz}oz pour)` : '';
-    const confirmNote = confirmed ? `<div class="info-note" style="margin:0; color:var(--green)">✓ confirmed by count</div>` : '';
+    const confirmNote = confirmed ? `<div class="info-note" style="margin:0; color:var(--green)">&#10003; confirmed by count</div>` : '';
     const missingLabel = isBulk(item)
-      ? `${fmtN(missingUnits)}<div class="info-note" style="margin:0">≈ ${fmtN(servingsToNative(item, missingUnits))} ${nativeLabel(item)}</div>`
+      ? `${fmtN(missingUnits)}<div class="info-note" style="margin:0">&asymp; ${fmtN(servingsToNative(item, missingUnits))} ${nativeLabel(item)}</div>`
       : fmtN(missingUnits);
     tr.innerHTML = `<td class="left">${item.name}${unitNote?`<div class="info-note" style="margin:0">${unitNote}</div>`:''}${confirmNote}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td style="color:${missingUnits>0?'var(--red)':'var(--ink)'}">${missingLabel}</td><td style="color:${missingCost>0?'var(--red)':'var(--ink)'}">${fmt$(missingCost)}</td><td>${fmtN(compSum)}</td><td style="color:${profitSum<0?'var(--red)':'var(--ink)'}">${fmt$(profitSum)}</td>`;
-    tb.appendChild(tr);
-  });
+    return tr;
+  };
+  const periodSectionRow = (label, sub)=>{
+    const tr = document.createElement('tr');
+    tr.className = 'section-row';
+    tr.innerHTML = `<td class="left" colspan="7"><strong>${label}</strong>${sub?` <span class="sub">${sub}</span>`:''}</td>`;
+    return tr;
+  };
+
+  const byMissing = (a,b)=>b.missingCost-a.missingCost;
+  const focusRows = perItem.filter(r=>isFocusItem(r.item)).sort(byMissing);
+  const secRows   = perItem.filter(r=>!isFocusItem(r.item)).sort(byMissing);
+  // pu / ac / missingUnits are all serving-equivalents here (computeRow converts on the way in), so
+  // unlike the week view's raw Sold column these are dimensionally consistent and safe to add.
+  const sum = (rows, k)=>rows.reduce((t,r)=>t+r[k],0);
+
+  tb.appendChild(periodSectionRow('Where it&rsquo;s going', 'the nine items that carry the NA Bev number'));
+  focusRows.forEach(r=>tb.appendChild(buildPeriodRow(r)));
+
+  tb.appendChild(periodSectionRow('Everything else', `${secRows.length} items — syrups, teas, waters, alt milks`));
+  if(periodSecondaryExpanded){ secRows.forEach(r=>tb.appendChild(buildPeriodRow(r))); }
+  const trSec = document.createElement('tr');
+  trSec.className = 'subtotal-row';
+  trSec.innerHTML = `<td class="left"><button type="button" class="btn secondary small" id="togglePeriodSecondary">${periodSecondaryExpanded?'▲ Collapse':'▼ Show all '+secRows.length}</button></td>`
+    + `<td>${fmtN(sum(secRows,'pu'))}</td><td>${fmtN(sum(secRows,'ac'))}</td>`
+    + `<td style="color:${sum(secRows,'missingUnits')>0?'var(--red)':'var(--ink)'}">${fmtN(sum(secRows,'missingUnits'))}</td>`
+    + `<td style="color:${sum(secRows,'missingCost')>0?'var(--red)':'var(--ink)'}">${fmt$(sum(secRows,'missingCost'))}</td>`
+    + `<td>${fmtN(sum(secRows,'compSum'))}</td><td>${fmt$(sum(secRows,'profitSum'))}</td>`;
+  tb.appendChild(trSec);
+
+  const trPTot = document.createElement('tr');
+  trPTot.className = 'total-row';
+  trPTot.innerHTML = `<td class="left">Total <span class="sub">(all ${perItem.length})</span></td>`
+    + `<td>${fmtN(sum(perItem,'pu'))}</td><td>${fmtN(sum(perItem,'ac'))}</td>`
+    + `<td style="color:var(--red)">${fmtN(sum(perItem,'missingUnits'))}</td>`
+    + `<td style="color:var(--red)">${fmt$(totMissingCost)}</td>`
+    + `<td>${fmtN(totComp)}</td><td>${fmt$(totProfit)}</td>`;
+  tb.appendChild(trPTot);
+
   tbl.appendChild(tb);
   card.appendChild(tbl);
   app.appendChild(card);
+  wireClick(tbl.querySelector('#togglePeriodSecondary'), ()=>{
+    periodSecondaryExpanded = !periodSecondaryExpanded;
+    render();
+  });
 
   renderCostRate(app, store, period);
   renderTransfers(app, store, period);

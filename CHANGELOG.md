@@ -19,6 +19,18 @@ The nine items that carry the NA Bev number — Coke, Diet Coke, Sprite, Root Be
 
 Cranberry is deliberately absent — it is coded to bar cost and is not on the NA Bev inventory count, so it is not an NA Bev item at all. Whole milk stays on the focus list despite having no BOH recipe use: with one use (4oz per coffee drink) it is the cleanest available detector for coffee drinks made and never rung.
 
+### Period Summary restructured to match the weekly table
+Same split, same reason: the nine focus items read first under a "Where it's going" header, the
+other 18 fold behind a one-line subtotal with a toggle. Sorting by missing-cost is preserved
+*within* each group, so the worst offender in each block still rises to the top of its own section
+rather than being buried by the split. A Total row was added (the weekly table already had one).
+
+The Period Summary keeps its own expand/collapse state rather than sharing the week table's —
+expanding one to chase a syrup shouldn't silently unfold the other on a view you're about to glance
+at. Purchased, Accounted and Product missing are all serving-equivalents by the time they reach this
+table, so unlike the week view's raw Sold column they're dimensionally consistent and safe to sum in
+the subtotal and total rows.
+
 ### New: Cost rate card
 Reproduces the P&L's own arithmetic — **Cost % = (Purchases + EOP Adjustment) ÷ Gross Sales**, where EOP Adjustment = opening inventory − closing inventory — and shows the two numbers that survive inventory timing:
 
