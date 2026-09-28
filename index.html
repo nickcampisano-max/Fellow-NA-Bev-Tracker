@@ -216,9 +216,9 @@ function defaultState(){
     {id:'dietcoke', name:"Soda, Diet Coke 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.958, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false, aliases:["Diet Coke"]},
     {id:'sprite', name:"Soda, Sprite 12oz Can", unit:'can', unitOz:null, pourOz:null, price:4.5, cost:0.96, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz (24/cs)", orderOnly:false, aliases:["Sprite"], recipeUsage:[{matchName:"Shirley Temple", ozPerUnit:1}]},
     {id:'rootbeer', name:"Soda, Root Beer 12oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.5, cost:0.71, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12 oz btl", orderOnly:false, aliases:["Root Beer"]},
-    {id:'clubsoda', name:"Club Soda 10oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.0, cost:1.115, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"10 oz btl", orderOnly:false, aliases:["Club Soda"]},
-    {id:'gingerbeer', name:"Ginger Beer 7.5oz Can", unit:'can', unitOz:null, pourOz:null, price:6.0, cost:1.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"7.5 oz can", orderOnly:false, aliases:["Ginger Beer"]},
-    {id:'jarritos', name:"Jarritos Grapefruit 12.5oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:0, cost:1.063, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12.5 oz btl", orderOnly:false},
+    {id:'clubsoda', barCoded:true, name:"Club Soda 10oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:4.0, cost:1.115, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"10 oz btl", orderOnly:false, aliases:["Club Soda"]},
+    {id:'gingerbeer', barCoded:true, name:"Ginger Beer 7.5oz Can", unit:'can', unitOz:null, pourOz:null, price:6.0, cost:1.1, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"7.5 oz can", orderOnly:false, aliases:["Ginger Beer"]},
+    {id:'jarritos', barCoded:true, name:"Jarritos Grapefruit 12.5oz Bottle", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:0, cost:1.063, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"12.5 oz btl", orderOnly:false},
     {id:'panna', name:"Acqua Panna Still Water 16.9oz", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:7.0, cost:1.533, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"16.9 oz btl", orderOnly:false, aliases:["Water, Bottled 16.9oz", "Acqua Panna Still Water"]},
     {id:'pellegrino', name:"Pellegrino Sparkling", unit:'can', unitLabel:'btl', unitOz:null, pourOz:null, price:8.0, cost:1.596, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"btl", orderOnly:false, aliases:["Water, Sparkling", "Pellegrino"]},
     {id:'lemonade', name:"Lemonade", unit:'gallon', unitLabel:'gal', unitOz:128, pourOz:6, price:5.0, cost:8.18, defaultKitchen:0, kitchenNote:'', parMultiplier:1.3, vendor:'Shamrock', sizeLabel:"1 gal jug", orderOnly:false, aliases:["Lemonade"], recipeUsage:[{matchName:"Arnold Palmer", ozPerUnit:4}]},
@@ -297,8 +297,20 @@ function emptyOrders(items){
 // reconciles — it just doesn't belong in the first thing you look at on a Monday. Verified against
 // Fellow P7-P9: these nine are where the cost lives. Kept as a set rather than a per-item flag so
 // changing the focus list is a one-line edit instead of nine.
-const FOCUS_IDS = new Set(['coke','dietcoke','sprite','rootbeer','clubsoda','gingerbeer','espresso','lemonade','wholemilk']);
+const FOCUS_IDS = new Set(['coke','dietcoke','sprite','rootbeer','panna','pellegrino','espresso','lemonade','wholemilk']);
+// Items whose GL moved to Liquor Cost (5230) — club soda, ginger beer and Jarritos, recoded
+// 2026-09-28 because the bar, not NA Bev, is what consumes them. They are kept in the data so
+// P10's history still parses, but they are filtered out of every view and every total: an item
+// the P&L charges to the bar must not sit inside an NA Bev cost number, and leaving it on the
+// sheet only invites someone to count it against the wrong line. Counting club soda is still
+// worth doing — it belongs on the BAR's count sheet now, not this one.
 function isFocusItem(item){ return FOCUS_IDS.has(item.id); }
+// The one place that decides what this tracker is responsible for. orderOnly = bought but never
+// reconciled (packets); barCoded = reconciled by the bar's line instead of ours.
+function isTracked(item){ return !item.orderOnly && !item.barCoded; }
+// The Order Guide is a different question: it lists what this team ORDERS, which still includes
+// the order-only packets but must not include anything the bar now buys on its own line.
+function inOrderGuide(item){ return !item.barCoded; }
 
 function newPeriod(items, name, startDate){
   return {
@@ -409,7 +421,7 @@ function migrateOrders(parsed){
         period.orders = period.weeks.map(()=>emptyOrders(store.items));
       } else {
         period.orders.forEach(o=>{
-          store.items.forEach(it=>{
+          store.items.filter(inOrderGuide).forEach(it=>{
             const nSlots = slotsForVendor(it.vendor).length;
             let cur = o[it.id];
             if(!cur){
@@ -1049,7 +1061,7 @@ function renderStoreView(app){
     // value sitting on some week. Carrying that through expectedOnHand would produce a
     // meaningless computed "beginning inventory" for an item that was never actually tracked —
     // so these are skipped here rather than carried forward.
-    store.items.filter(it=>!it.orderOnly).forEach(it=>{ carry[it.id] = servingsToNative(it, expectedOnHand(store, period, it, 3)); });
+    store.items.filter(isTracked).forEach(it=>{ carry[it.id] = servingsToNative(it, expectedOnHand(store, period, it, 3)); });
     const np = newPeriod(store.items, 'Period ' + (store.periods.length+1), '');
     np.beginInv = carry;
     store.periods.push(np);
@@ -1066,7 +1078,7 @@ function renderStoreView(app){
   invRow.style.display='flex'; invRow.style.gap='14px'; invRow.style.flexWrap='wrap';
   // Order-only items (Passport coffee/tea) don't participate in variance reconciliation at all —
   // showing them here would imply they're tracked when they're not.
-  store.items.filter(it=>!it.orderOnly).forEach(it=>{
+  store.items.filter(isTracked).forEach(it=>{
     const f = document.createElement('div'); f.className='settings-field';
     f.innerHTML = `<label>${it.name} (${isBulk(it) ? nativeLabel(it) : 'units'})</label>`;
     const inp = document.createElement('input'); inp.type='text'; inp.value = period.beginInv[it.id] ?? '';
@@ -1089,7 +1101,7 @@ function renderStoreView(app){
   const endRow = document.createElement('div');
   endRow.style.display='flex'; endRow.style.gap='14px'; endRow.style.flexWrap='wrap';
   const lastWeekData = period.weeks[3];
-  store.items.filter(it=>!it.orderOnly).forEach(it=>{
+  store.items.filter(isTracked).forEach(it=>{
     const f = document.createElement('div'); f.className='settings-field';
     f.innerHTML = `<label>${it.name} (${isBulk(it) ? nativeLabel(it) : 'units'})</label>`;
     const inp = document.createElement('input'); inp.type='text'; inp.value = lastWeekData[it.id].actualCount ?? '';
@@ -1177,7 +1189,7 @@ function renderStoreView(app){
 
   // Order-only items (coffee/tea via Passport) have no sales data and aren't part of NA Bev
   // variance reconciliation — they only appear in the Order Guide.
-  const tracked = store.items.filter(it=>!it.orderOnly);
+  const tracked = store.items.filter(isTracked);
   // Split, not filtered: every tracked item still renders and still lands in the grand total. The
   // nine focus items just render first, above a divider, because a Monday glance that starts with
   // 29 rows is a Monday glance nobody takes. Partitioned here rather than sorted so the collapsed
@@ -1395,7 +1407,7 @@ function renderPeriodSummary(app, store, period){
 
   let totPurchU=0, totAccounted=0, totProfit=0, totComp=0, totDisc=0;
   let totMissingCost=0, confirmedCount=0;
-  const perItem = store.items.filter(it=>!it.orderOnly).map(item=>{
+  const perItem = store.items.filter(isTracked).map(item=>{
     let pu=0, ac=0, compSum=0, discSum=0, profitSum=0;
     // Purchased/Accounted/Comped/Discount/Profit are each real, distinct events every week (a
     // sale, a purchase, a comp), so summing them across the period's 4 weeks is legitimate — that's
@@ -1431,6 +1443,12 @@ function renderPeriodSummary(app, store, period){
     return {item, pu, ac, compSum, discSum, profitSum, missingUnits, missingCost, confirmed};
   });
   const totalTrackedItems = perItem.length;
+  // Naming fix 2026-09-28: with a full period-end count logged, expectedOnHand() returns the
+  // COUNTED number, so "Product missing" is describing the stock actually sitting on the shelf.
+  // Nick read $773.64 as $773.64 of loss when it was the closing inventory. The label has to
+  // follow the data: projection => "Product missing", confirmed count => "On hand (counted)".
+  const allCounted = totalTrackedItems > 0 && confirmedCount === totalTrackedItems;
+  const missingLabel = allCounted ? 'On hand (counted)' : 'Product missing';
   let confirmStatus;
   if(confirmedCount===0){
     confirmStatus = `No items have a Week 4 count logged yet — every number here is still a projection, not confirmed.`;
@@ -1459,15 +1477,17 @@ function renderPeriodSummary(app, store, period){
     <div class="kpi" title="Total profit on paid sales this period — Sold to guests × (price − cost per serving)."><div class="label">Profit</div><div class="value ${totProfit<0?'red':''}">${fmt$(totProfit)}</div></div>
     <div class="kpi" title="Staff comp units this period — already part of Accounted for, not additional. What's being given to the team, in units."><div class="label">Comped (units)</div><div class="value">${fmtN(totComp)}</div></div>
     <div class="kpi" title="Menu-price value of everything comped this period — same figure as Toast's Discount $, totaled. What's being given to the team, in dollars."><div class="label">Comped ($)</div><div class="value">${fmt$(totDisc)}</div></div>
-    <div class="kpi" title="Cost value of Product missing — a projection for most items, confirmed for any item with a Week 4 count logged. Not a sum of every week's snapshot. See the table below for per-item detail and which items are confirmed."><div class="label">Product missing ($)</div><div class="value red">${fmt$(totMissingCost)}</div></div>
+    <div class="kpi" title="${allCounted?'Every tracked item has a period-end count, so this is the measured value of closing inventory — not a loss figure.':'Cost value of Product missing — a projection for most items, confirmed for any item with a Week 4 count logged.'}"><div class="label">${missingLabel} ($)</div><div class="value${allCounted?'':' red'}">${fmt$(totMissingCost)}</div></div>
   `;
   card.appendChild(kpis);
-  card.insertAdjacentHTML('beforeend', `<div class="info-note" style="margin:8px 0 0">Profit and Comped are real totals — every sale and comp this period, added up. Product missing is different: a projection from purchase/sales records, not a confirmed count — unless an item has a Week 4 count logged, which locks that item's number in as the real ending figure instead of a projection. ${confirmStatus} The item table below shows exact units per item — most are cans/bottles, Lemonade is in servings (see its row).</div>`);
+  card.insertAdjacentHTML('beforeend', `<div class="info-note" style="margin:8px 0 0">${allCounted
+    ? `Profit and Comped are real totals — every sale and comp this period, added up. <strong>On hand (counted) is the physical count taken at period end</strong>, so it is closing inventory, not a shortfall. What went missing is the difference between Accounted for and what actually left the shelf — see the week tables.`
+    : `Profit and Comped are real totals — every sale and comp this period, added up. Product missing is different: a projection from purchase/sales records, not a confirmed count — unless an item has a Week 4 count logged, which locks that item's number in as the real ending figure instead of a projection. ${confirmStatus}`} The item table below shows exact units per item — most are cans/bottles, Lemonade is in servings (see its row).</div>`);
 
   // Sorted worst-first by dollar impact so "which item, how much" is the first thing visible —
   // directly answering "how many Cokes are we missing" without scanning the whole item list.
   const tbl = document.createElement('table');
-  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th title="What your records say should currently be in the fridge for this item — a projection, unless a Week 4 count has been logged for it (marked ✓), which makes it the confirmed ending number instead.">Product missing</th><th>Product missing ($)</th><th title="Comped units this period — already part of Accounted, not additional.">Comped</th><th title="Profit on paid sales this period.">Profit</th></tr></thead>`;
+  tbl.innerHTML = `<thead><tr><th class="left">Item</th><th>Purchased</th><th>Accounted</th><th title="${allCounted?'Counted at period end — this is closing inventory, not a shortfall.':'What your records say should be in the fridge — a projection, unless a Week 4 count has been logged (marked ✓).'}">${missingLabel}</th><th>${missingLabel} ($)</th><th title="Comped units this period — already part of Accounted, not additional.">Comped</th><th title="Profit on paid sales this period.">Profit</th></tr></thead>`;
   const tb = document.createElement('tbody');
 
   // Same split as the weekly table, and for the same reason: the nine items that carry the number
@@ -1479,10 +1499,10 @@ function renderPeriodSummary(app, store, period){
     const tr = document.createElement('tr');
     const unitNote = isBulk(item) ? `servings (${item.pourOz}oz pour)` : '';
     const confirmNote = confirmed ? `<div class="info-note" style="margin:0; color:var(--green)">&#10003; confirmed by count</div>` : '';
-    const missingLabel = isBulk(item)
+    const missingCellLabel = isBulk(item)
       ? `${fmtN(missingUnits)}<div class="info-note" style="margin:0">&asymp; ${fmtN(servingsToNative(item, missingUnits))} ${nativeLabel(item)}</div>`
       : fmtN(missingUnits);
-    tr.innerHTML = `<td class="left">${item.name}${unitNote?`<div class="info-note" style="margin:0">${unitNote}</div>`:''}${confirmNote}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td style="color:${missingUnits>0?'var(--red)':'var(--ink)'}">${missingLabel}</td><td style="color:${missingCost>0?'var(--red)':'var(--ink)'}">${fmt$(missingCost)}</td><td>${fmtN(compSum)}</td><td style="color:${profitSum<0?'var(--red)':'var(--ink)'}">${fmt$(profitSum)}</td>`;
+    tr.innerHTML = `<td class="left">${item.name}${unitNote?`<div class="info-note" style="margin:0">${unitNote}</div>`:''}${confirmNote}</td><td>${fmtN(pu)}</td><td>${fmtN(ac)}</td><td style="color:${(!allCounted&&missingUnits>0)?'var(--red)':'var(--ink)'}">${missingCellLabel}</td><td style="color:${missingCost>0?'var(--red)':'var(--ink)'}">${fmt$(missingCost)}</td><td>${fmtN(compSum)}</td><td style="color:${profitSum<0?'var(--red)':'var(--ink)'}">${fmt$(profitSum)}</td>`;
     return tr;
   };
   const periodSectionRow = (label, sub)=>{
@@ -1545,7 +1565,7 @@ function renderPeriodSummary(app, store, period){
 // Dollar value of the period's beginning on-hand and its expected/counted ending on-hand. These
 // are the two numbers the P&L calls Inventory, and the gap between them is the EOP Adjustment.
 function periodInventoryValue(store, period, atEnd){
-  return store.items.filter(it=>!it.orderOnly).reduce((sum, item)=>{
+  return store.items.filter(isTracked).reduce((sum, item)=>{
     const servings = atEnd
       ? expectedOnHand(store, period, item, period.weeks.length-1)
       : purchasedServings(item, parseFloat(period.beginInv[item.id]) || 0);
@@ -1556,7 +1576,7 @@ function periodInventoryValue(store, period, atEnd){
 // deliberately NOT via purchasedServings, because a purchase's dollar value doesn't depend on how
 // many drinks a jug pours.
 function periodPurchaseValue(store, period){
-  return store.items.filter(it=>!it.orderOnly).reduce((sum, item)=>{
+  return store.items.filter(isTracked).reduce((sum, item)=>{
     let native = 0;
     period.weeks.forEach(w=>{ native += parseFloat(w[item.id]?.purchased) || 0; });
     return sum + native * (parseFloat(item.cost) || 0);
@@ -1652,7 +1672,7 @@ function renderTransfers(app, store, period){
   card.innerHTML = `<div class="rowflex"><h2>Transfers out &mdash; bar &amp; kitchen</h2><button class="btn secondary small" id="addTransferBtn">+ Add transfer</button></div>`;
 
   const sales = parseFloat(period.naBevSales) || 0;
-  const tracked = store.items.filter(it=>!it.orderOnly);
+  const tracked = store.items.filter(isTracked);
   const tbl = document.createElement('table');
   tbl.innerHTML = `<thead><tr><th class="left">Item</th><th class="left">Goes to</th><th>Units (native)</th><th>Cost</th><th title="What this transfer is worth as a share of NA Bev sales — how many points it takes off the cost %.">Points of cost %</th><th class="left">Note</th><th></th></tr></thead>`;
   const tb = document.createElement('tbody');
@@ -1813,7 +1833,7 @@ function renderOrderGuide(app){
   });
 
   vendors.forEach(vendor=>{
-    const items = store.items.filter(it=>(it.vendor||'(no vendor)')===vendor);
+    const items = store.items.filter(inOrderGuide).filter(it=>(it.vendor||'(no vendor)')===vendor);
     const slots = slotsForVendor(vendor==='(no vendor)' ? '' : vendor);
 
     const card = document.createElement('div');
@@ -1843,7 +1863,7 @@ function renderOrderGuide(app){
       // ordering and reconciliation never disagree about what "1" means for a given item.
       const unitLabel = nativeLabel(item) === 'unit' ? 'units' : nativeLabel(item);
       let avgUsage=null, parTarget=null, onHand=null, suggestedNative=null;
-      if(!item.orderOnly){
+      if(isTracked(item)){
         avgUsage = trailingAvgUsage(store, item, periodIdx, weekIdx);
         const mult = item.parMultiplier ?? 1.3;
         parTarget = avgUsage===null ? null : avgUsage * mult;
@@ -1916,7 +1936,7 @@ function renderCompare(app){
     store.periods.forEach(period=>{
       let totPurchU=0, totAccounted=0, totAvail=0, totMissingCost=0;
       let worst = null;
-      store.items.filter(it=>!it.orderOnly).forEach(item=>{
+      store.items.filter(isTracked).forEach(item=>{
         // Fixed 2026-09-09: same carryIn bug as Period Summary — computeRow(item,w) with no third
         // argument silently ignored beginning inventory, so a period that opened with real
         // beginning-inventory (like P9) showed accounted-for outrunning purchased and swung

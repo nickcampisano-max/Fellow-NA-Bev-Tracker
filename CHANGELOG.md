@@ -9,6 +9,46 @@ are recorded here.
 
 ---
 
+## [v1.5] — 2026-09-28
+
+### Liquor-coded items are out of the NA Bev tracker
+Club soda, ginger beer and Jarritos were recoded to **Liquor Cost (5230)** in MarginEdge, which
+recategorized their purchases and inventory retroactively. They now carry a `barCoded` flag and are
+filtered out of every view and every total — week table, Period Summary, Order Guide, cost rate,
+inventory value and purchase value.
+
+The rows stay in the data so P10's history still parses, but an item the P&L charges to the bar
+can't sit inside an NA Bev cost number, and leaving it on the sheet only invites someone to count it
+against the wrong line. **Counting club soda is still worth doing — it belongs on the bar's count
+sheet now.**
+
+One predicate, `isTracked(item)`, now decides what this tracker reconciles (`!orderOnly &&
+!barCoded`); every filter routes through it. The Order Guide uses its own `inOrderGuide(item)`
+(`!barCoded`) because it still needs to list the order-only packets.
+
+**Focus list:** club soda and ginger beer come out, **Acqua Panna and Pellegrino go in** — both are
+on the Sunday count and both showed real gaps in P10. Still nine items.
+
+### "Product missing" becomes "On hand (counted)" once the period is fully counted
+With a period-end count logged for every tracked item, `expectedOnHand()` returns the *counted*
+number — so the figure is closing inventory, not a shortfall. Nick read $773.64 as $773.64 of loss
+when it was the stock on the shelf. The KPI, the two column headers, the red styling and the
+explanatory note all now switch when `confirmedCount === totalTrackedItems`.
+
+### Verification
+`verify5.mjs` — **39 assertions, all passing.** New ones cover: the three items are flagged and
+absent from the tracked set (24 items, not 27), the week table, Period Summary and Order Guide; the
+focus list contains no liquor-coded item; purchases reconcile to the MarginEdge reports minus club
+soda ($343.87); and the label flips in both directions.
+
+### Known gaps
+- P10 needs Fellow-only gross NA Bev sales before the cost % is meaningful. The Toast export sent on
+  Sep 28 is multi-concept (ATP/ITT categories, Food $112,961 vs Fellow's $77,421 in P9).
+- MarginEdge records the Passport espresso as **9 lb instead of 3** (3 × 1 lb bags at $11.30), so it
+  values espresso at $3.77/lb instead of $12.05 and understates NA Bev COGS by about $41 a period.
+- Iced tea case yield in this tracker is wrong: it assumes 1,536 six-oz servings per case; the P10
+  count implies roughly 61. Sencha's apparent variance is a conversion artifact, not a loss.
+
 ## [v1.4] — 2026-09-16
 
 ### Week table trimmed to 9 columns
